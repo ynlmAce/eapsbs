@@ -4,9 +4,11 @@ import com.bs.eaps.common.ApiResponse;
 import com.bs.eaps.dto.counselor.OperationHistoryQueryDTO;
 import com.bs.eaps.dto.counselor.TaskListQueryDTO;
 import com.bs.eaps.dto.counselor.TaskProcessDTO;
+import com.bs.eaps.dto.counselor.CounselorProfileDTO;
 import com.bs.eaps.service.CounselorService;
 import com.bs.eaps.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +21,7 @@ import com.bs.eaps.dto.common.PageRequestDTO;
 /**
  * 辅导员模块控制器
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/counselor")
 @RequiredArgsConstructor
@@ -73,5 +76,31 @@ public class CounselorController {
         pageRequest.setPageSize(queryDTO.getPageSize());
 
         return ApiResponse.success(counselorService.getOperationsHistory(startDate, endDate, type, pageRequest));
+    }
+
+    /**
+     * 获取辅导员个人资料
+     */
+    @PostMapping("/profile")
+    public ApiResponse getCounselorProfile() {
+        log.info("获取辅导员个人资料");
+        CounselorProfileDTO profile = counselorService.getCounselorProfile();
+        if (profile == null) {
+            return ApiResponse.error(500, "获取辅导员个人资料失败");
+        }
+        return ApiResponse.success(profile);
+    }
+
+    /**
+     * 更新辅导员个人资料
+     */
+    @PostMapping("/profile/update")
+    public ApiResponse updateCounselorProfile(@RequestBody CounselorProfileDTO profileDTO) {
+        log.info("更新辅导员个人资料：{}", profileDTO);
+        boolean result = counselorService.updateCounselorProfile(profileDTO);
+        if (!result) {
+            return ApiResponse.error(500, "更新辅导员个人资料失败");
+        }
+        return ApiResponse.success(true);
     }
 }

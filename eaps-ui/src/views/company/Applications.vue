@@ -77,7 +77,7 @@
                   <el-select 
                     v-model="scope.row.status" 
                     size="small" 
-                    @change="updateApplicationStatus(scope.row)"
+                    @change="updateApplicationStatusHandler(scope.row)"
                     :loading="scope.row.updating"
                   >
                     <el-option
@@ -151,14 +151,14 @@
             placeholder="搜索学生姓名/学校"
             clearable
             style="width: 200px;"
-            @clear="filterStudentApplications"
+            @clear="loadStudentApplications"
           />
           <el-select 
             v-model="studentStatusFilter" 
             placeholder="申请状态" 
             clearable 
             style="width: 150px;"
-            @change="filterStudentApplications"
+            @change="loadStudentApplications"
           >
             <el-option
               v-for="item in applicationStatusOptions"
@@ -172,7 +172,7 @@
             placeholder="学生标签" 
             clearable
             style="width: 150px;"
-            @change="filterStudentApplications"
+            @change="loadStudentApplications"
           >
             <el-option label="已收藏" value="favorite" />
             <el-option label="已拉黑" value="blacklist" />
@@ -208,7 +208,7 @@
               <el-select 
                 v-model="scope.row.status" 
                 size="small" 
-                @change="updateApplicationStatus(scope.row)"
+                @change="updateApplicationStatusHandler(scope.row)"
                 :loading="scope.row.updating"
               >
                 <el-option
@@ -322,474 +322,459 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
-// 引入API相关函数，实际开发时需要实现这些函数
-// import { getJobApplications, getStudentApplications, updateApplicationStatus, toggleFavorite, toggleBlacklist, saveNotes, batchDownloadResumes } from '@/api/company';
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
+import { getCompanyApplications, processApplication, toggleFavoriteStudent, toggleBlacklistStudent } from '@/api/company'
+import { batchDownloadResumes } from '@/api/job'
+import { createChatSession } from '@/api/chat'
+import { callApi } from '@/utils/apiUtils'
 
-const router = useRouter();
-const viewMode = ref('job');
-const loading = ref(false);
-const defaultAvatar = ref('https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png');
+const route = useRoute()
+const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
-// 按岗位查看相关变量
-const jobs = ref([]);
-const activeJobPanels = ref([]);
-const jobSearchKeyword = ref('');
-const jobStatusFilter = ref('');
+// 视图模式：按岗位查看或按学生查看
+const viewMode = ref('job')
 
-// 按学生查看相关变量
-const studentApplications = ref([]);
-const studentSearchKeyword = ref('');
-const studentStatusFilter = ref('');
-const studentTagFilter = ref('');
-const currentPage = ref(1);
-const pageSize = ref(10);
-const totalStudentApplications = ref(0);
+// 筛选参数
+const jobSearchKeyword = ref('')
+const jobStatusFilter = ref('')
+const studentSearchKeyword = ref('')
+const studentStatusFilter = ref('')
+const studentTagFilter = ref('')
 
-// 备注对话框相关
-const notesDialogVisible = ref(false);
-const selectedApplication = ref(null);
-const applicationNotes = ref('');
-const savingNotes = ref(false);
-
-// 批量下载相关
-const batchDownloadVisible = ref(false);
-const downloadOptions = ref(['attachments']);
-const selectedJob = ref(null);
-const downloading = ref(false);
-const availableResumesCount = ref(0);
-
-// 岗位状态选项
-const jobStatusOptions = [
-  { value: 'PENDING', label: '待审核' },
-  { value: 'APPROVED', label: '招聘中' },
-  { value: 'REJECTED', label: '已驳回' },
-  { value: 'EXPIRED', label: '已结束' }
-];
-
-// 申请状态选项
-const applicationStatusOptions = [
-  { value: 'APPLIED', label: '已投递' },
-  { value: 'VIEWED', label: '已查看' },
-  { value: 'INTERVIEW_INVITED', label: '已邀请面试' },
-  { value: 'INTERVIEWED', label: '已面试' },
-  { value: 'OFFER_RECEIVED', label: '已发放Offer' },
-  { value: 'REJECTED', label: '已拒绝' }
-];
-
-// 筛选后的岗位列表
+// 岗位相关数据
+const activeJobPanels = ref([])
+const jobs = ref([])
 const filteredJobs = computed(() => {
-  if (!jobSearchKeyword.value && !jobStatusFilter.value) {
-    return jobs.value;
+  let result = [...jobs.value]
+  
+  // 按关键词筛选
+  if (jobSearchKeyword.value) {
+    const keyword = jobSearchKeyword.value.trim().toLowerCase()
+    result = result.filter(job => 
+      job.title && job.title.toLowerCase().includes(keyword)
+    )
   }
   
-  return jobs.value.filter(job => {
-    const matchKeyword = !jobSearchKeyword.value || job.title.toLowerCase().includes(jobSearchKeyword.value.toLowerCase());
-    const matchStatus = !jobStatusFilter.value || job.status === jobStatusFilter.value;
-    return matchKeyword && matchStatus;
-  });
-});
+  // 按状态筛选
+  if (jobStatusFilter.value) {
+    result = result.filter(job => job.status === jobStatusFilter.value)
+  }
+  
+  return result
+})
 
-// 筛选后的学生申请列表
+// 学生申请相关数据
+const studentApplications = ref([])
 const filteredStudentApplications = computed(() => {
-  if (!studentSearchKeyword.value && !studentStatusFilter.value && !studentTagFilter.value) {
-    return studentApplications.value;
+  let result = [...studentApplications.value]
+  
+  // 按关键词筛选
+  if (studentSearchKeyword.value) {
+    const keyword = studentSearchKeyword.value.trim().toLowerCase()
+    result = result.filter(app => 
+      (app.studentName && app.studentName.toLowerCase().includes(keyword)) ||
+      (app.studentSchool && app.studentSchool.toLowerCase().includes(keyword))
+    )
   }
   
-  return studentApplications.value.filter(app => {
-    const matchKeyword = !studentSearchKeyword.value || 
-      app.studentName.toLowerCase().includes(studentSearchKeyword.value.toLowerCase()) ||
-      app.studentSchool.toLowerCase().includes(studentSearchKeyword.value.toLowerCase());
-    
-    const matchStatus = !studentStatusFilter.value || app.status === studentStatusFilter.value;
-    
-    let matchTag = true;
-    if (studentTagFilter.value === 'favorite') {
-      matchTag = app.isFavorite;
-    } else if (studentTagFilter.value === 'blacklist') {
-      matchTag = app.isBlacklisted;
-    }
-    
-    return matchKeyword && matchStatus && matchTag;
-  });
-});
+  // 按状态筛选
+  if (studentStatusFilter.value) {
+    result = result.filter(app => app.status === studentStatusFilter.value)
+  }
+  
+  // 按标签筛选
+  if (studentTagFilter.value === 'favorite') {
+    result = result.filter(app => app.isFavorite)
+  } else if (studentTagFilter.value === 'blacklist') {
+    result = result.filter(app => app.isBlacklisted)
+  }
+  
+  return result
+})
 
-// 获取岗位状态标签类型
+// 状态选项
+const jobStatusOptions = [
+  { value: 'recruiting', label: '招聘中' },
+  { value: 'pending', label: '待审核' },
+  { value: 'rejected', label: '已驳回' },
+  { value: 'ended', label: '已结束' }
+]
+
+const applicationStatusOptions = [
+  { value: 'pending', label: '待处理' },
+  { value: 'viewed', label: '已查看' },
+  { value: 'contacted', label: '已联系' },
+  { value: 'interviewed', label: '已面试' },
+  { value: 'accepted', label: '已录用' },
+  { value: 'rejected', label: '不合适' }
+]
+
+// 加载状态
+const loading = ref(false)
+const selectedApplication = ref(null)
+const notesDialogVisible = ref(false)
+const applicationNotes = ref('')
+const savingNotes = ref(false)
+const batchDownloadVisible = ref(false)
+const downloadOptions = ref(['attachments'])
+const selectedJob = ref(null)
+const availableResumesCount = ref(0)
+const downloading = ref(false)
+const totalStudentApplications = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+// 获取岗位状态对应的类型
 const getJobStatusType = (status) => {
-  const statusMap = {
-    'PENDING': 'info',
-    'APPROVED': 'success',
-    'REJECTED': 'danger',
-    'EXPIRED': 'info'
-  };
-  return statusMap[status] || 'info';
-};
+  switch (status) {
+    case 'recruiting':
+    case 'active':
+      return 'success'
+    case 'pending':
+      return 'warning'
+    case 'rejected':
+      return 'danger'
+    case 'ended':
+    case 'closed':
+      return 'info'
+    default:
+      return ''
+  }
+}
 
-// 获取岗位状态显示文本
+// 获取岗位状态文本
 const getJobStatusText = (status) => {
-  const statusMap = {
-    'PENDING': '待审核',
-    'APPROVED': '招聘中',
-    'REJECTED': '已驳回',
-    'EXPIRED': '已结束'
-  };
-  return statusMap[status] || '未知状态';
-};
+  switch (status) {
+    case 'recruiting':
+    case 'active':
+      return '招聘中'
+    case 'pending':
+      return '待审核'
+    case 'rejected':
+      return '已驳回'
+    case 'ended':
+    case 'closed':
+      return '已结束'
+    default:
+      return '未知状态'
+  }
+}
 
-// 加载岗位申请数据
-const loadJobApplications = async () => {
-  loading.value = true;
-  try {
-    // 实际开发时使用API调用
-    // const res = await getJobApplications();
-    // jobs.value = res.body.list;
+// 监听路由参数
+watch(() => route.query, (query) => {
+  if (query.jobId) {
+    // 如果URL参数中有jobId，则设置为按岗位查看模式并展开对应岗位
+    viewMode.value = 'job'
     
-    // 模拟数据
-    setTimeout(() => {
-      jobs.value = [
-        {
-          id: 1,
-          title: '前端开发工程师',
-          status: 'APPROVED',
-          applicationCount: 12,
-          applications: generateApplications(12, '前端开发工程师'),
-          loading: false
-        },
-        {
-          id: 2,
-          title: 'Java后端工程师',
-          status: 'APPROVED',
-          applicationCount: 8,
-          applications: generateApplications(8, 'Java后端工程师'),
-          loading: false
-        },
-        {
-          id: 3,
-          title: '产品经理',
-          status: 'EXPIRED',
-          applicationCount: 5,
-          applications: generateApplications(5, '产品经理'),
-          loading: false
-        },
-        {
-          id: 4,
-          title: 'UI设计师',
-          status: 'PENDING',
-          applicationCount: 0,
-          applications: [],
-          loading: false
-        }
-      ];
-      loading.value = false;
-      
-      // 默认展开第一个面板
-      if (jobs.value.length > 0) {
-        activeJobPanels.value = [jobs.value[0].id];
+    const jobId = parseInt(query.jobId, 10)
+    if (!isNaN(jobId)) {
+      // 确保对应岗位面板展开
+      if (!activeJobPanels.value.includes(jobId)) {
+        activeJobPanels.value.push(jobId)
       }
-    }, 500);
-  } catch (error) {
-    console.error('加载岗位申请数据失败:', error);
-    ElMessage.error('加载岗位申请数据失败，请稍后重试');
-    loading.value = false;
+    }
   }
-};
+}, { immediate: true })
 
-// 加载学生申请数据
-const loadStudentApplications = async () => {
-  loading.value = true;
+// 组件挂载时加载数据
+onMounted(() => {
+  loadData()
+})
+
+// 加载数据
+const loadData = async () => {
+  loading.value = true
+  
   try {
-    // 实际开发时使用API调用
-    // const res = await getStudentApplications({
-    //   page: currentPage.value,
-    //   pageSize: pageSize.value,
-    //   status: studentStatusFilter.value,
-    //   keyword: studentSearchKeyword.value,
-    //   tag: studentTagFilter.value
-    // });
-    // studentApplications.value = res.body.list;
-    // totalStudentApplications.value = res.body.total;
-    
-    // 模拟数据
-    setTimeout(() => {
-      studentApplications.value = [
-        ...generateApplications(8, '前端开发工程师'),
-        ...generateApplications(7, 'Java后端工程师'),
-        ...generateApplications(5, '产品经理')
-      ];
-      totalStudentApplications.value = 20;
-      loading.value = false;
-    }, 500);
+    // 按当前视图模式加载数据
+    if (viewMode.value === 'job') {
+      await loadJobApplications()
+    } else {
+      await loadStudentApplications()
+    }
   } catch (error) {
-    console.error('加载学生申请数据失败:', error);
-    ElMessage.error('加载学生申请数据失败，请稍后重试');
-    loading.value = false;
+    // 错误已由callApi处理
+    console.error('加载申请数据失败:', error)
+  } finally {
+    loading.value = false
   }
-};
+}
 
-// 生成模拟申请数据
-const generateApplications = (count, jobTitle) => {
-  const applications = [];
-  const schools = ['清华大学', '北京大学', '复旦大学', '上海交通大学', '武汉大学', '浙江大学'];
-  const majors = ['计算机科学与技术', '软件工程', '电子信息工程', '数据科学', '通信工程'];
-  const statuses = ['APPLIED', 'VIEWED', 'INTERVIEW_INVITED', 'INTERVIEWED', 'OFFER_RECEIVED', 'REJECTED'];
-  
-  for (let i = 0; i < count; i++) {
-    applications.push({
-      id: `${jobTitle}-${i}`,
-      jobId: jobTitle === '前端开发工程师' ? 1 : (jobTitle === 'Java后端工程师' ? 2 : 3),
-      jobTitle,
-      studentId: 1000 + i,
-      studentName: `学生${i + 1}`,
-      studentAvatar: i % 3 === 0 ? `https://cube.elemecdn.com/${i % 10}/88/03b0d39583f48206768a7534e55bcpng.png` : '',
-      studentSchool: schools[i % schools.length],
-      studentMajor: majors[i % majors.length],
-      applyTime: new Date(Date.now() - i * 86400000).toISOString().substring(0, 19).replace('T', ' '),
-      status: statuses[i % statuses.length],
-      hasResume: i % 4 !== 3,
-      isFavorite: i % 5 === 0,
-      isBlacklisted: i % 7 === 0,
-      hasNotes: i % 3 === 0,
-      notes: i % 3 === 0 ? '这个学生表现很好，有潜力' : '',
-      updating: false
-    });
+// 加载按岗位组织的申请
+const loadJobApplications = async () => {
+  try {
+    const result = await callApi(getCompanyApplications({
+      groupBy: 'job'
+    }))
+    
+    jobs.value = result.jobs || []
+    
+    // 如果URL中有jobId参数，展开对应岗位
+    if (route.query.jobId) {
+      const jobId = parseInt(route.query.jobId, 10)
+      if (!isNaN(jobId) && !activeJobPanels.value.includes(jobId)) {
+        activeJobPanels.value.push(jobId)
+      }
+    }
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('加载岗位申请数据失败:', error)
+    jobs.value = []
   }
-  
-  return applications;
-};
+}
+
+// 加载按学生组织的申请
+const loadStudentApplications = async () => {
+  try {
+    const result = await callApi(getCompanyApplications({
+      groupBy: 'student',
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      status: studentStatusFilter.value,
+      keyword: studentSearchKeyword.value,
+      tag: studentTagFilter.value
+    }))
+    
+    studentApplications.value = result.applications || []
+    totalStudentApplications.value = result.total || 0
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('加载学生申请数据失败:', error)
+    studentApplications.value = []
+    totalStudentApplications.value = 0
+  }
+}
 
 // 筛选岗位申请
 const filterJobApplications = () => {
-  // 实际开发时可能需要重新加载数据
-  // loadJobApplications();
-};
+  // 由computed属性filteredJobs自动处理筛选
+}
 
 // 筛选学生申请
 const filterStudentApplications = () => {
-  // 实际开发时重新加载数据
-  loadStudentApplications();
-};
+  currentPage.value = 1
+  loadStudentApplications()
+}
+
+// 处理分页大小变化
+const handleSizeChange = (val) => {
+  pageSize.value = val
+  loadStudentApplications()
+}
+
+// 处理页码变化
+const handleCurrentChange = (val) => {
+  currentPage.value = val
+  loadStudentApplications()
+}
 
 // 更新申请状态
-const updateApplicationStatus = async (application) => {
-  application.updating = true;
+const updateApplicationStatusHandler = async (application) => {
+  if (application.updating) return
+  
+  application.updating = true
   try {
-    // 实际开发时使用API调用
-    // await updateApplicationStatus(application.id, application.status);
+    await callApi(processApplication(
+      application.id, 
+      application.status, 
+      ''
+    ), {
+      showSuccess: true,
+      successMsg: '申请状态更新成功'
+    })
     
-    // 模拟更新成功
-    setTimeout(() => {
-      ElMessage.success('状态已更新');
-      application.updating = false;
-    }, 500);
+    // 保存原状态，以便出错时恢复
+    application.originalStatus = application.status
   } catch (error) {
-    console.error('更新申请状态失败:', error);
-    ElMessage.error('更新申请状态失败，请稍后重试');
-    application.updating = false;
+    // 错误已由callApi处理
+    console.error('更新申请状态失败:', error)
+    
+    // 恢复原状态
+    application.status = application.originalStatus || 'pending'
+  } finally {
+    application.updating = false
   }
-};
+}
 
 // 查看学生档案
 const viewStudentProfile = (studentId) => {
-  // 跳转到学生档案页
-  window.open(`/student-profile/${studentId}`, '_blank');
-};
+  ElMessage.info('查看学生档案功能暂未实现')
+  // TODO: 实现查看学生档案功能
+}
 
 // 下载简历
-const downloadResume = (application) => {
+const downloadResume = async (application) => {
   if (!application.hasResume) {
-    return ElMessage.warning('该学生未上传简历');
+    ElMessage.warning('该学生未上传简历文件')
+    return
   }
   
-  // 实际开发时使用API调用下载简历
-  // window.open(`/api/resume/download/${application.studentId}`, '_blank');
+  const loading = ElLoading.service({
+    lock: true,
+    text: '下载简历中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
   
-  ElMessage.success('简历下载中...');
-};
+  try {
+    const response = await batchDownloadResumes([application.id])
+    
+    // 处理文件下载
+    const blob = new Blob([response], { type: 'application/octet-stream' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${application.studentName || '学生'}_简历.zip`
+    link.click()
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('简历下载成功')
+  } catch (error) {
+    ElMessage.error('下载简历失败: ' + (error.message || '未知错误'))
+    console.error('下载简历失败:', error)
+  } finally {
+    loading.close()
+  }
+}
 
 // 联系学生
-const contactStudent = (application) => {
-  // 跳转到聊天页面
-  router.push({
-    name: 'CompanyChat',
-    params: { 
-      type: 'student',
-      id: application.studentId
-    },
-    query: { 
-      jobId: application.jobId,
-      jobTitle: application.jobTitle
+const contactStudent = async (application) => {
+  const loading = ElLoading.service({
+    lock: true,
+    text: '创建会话中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+  
+  try {
+    const result = await callApi(createChatSession(
+      'SE', // 学生-企业会话
+      application.studentId,
+      application.jobId,
+      '您好，我们已收到您的简历，想与您进一步沟通。'
+    ))
+    
+    // 跳转到聊天页
+    if (result && result.sessionId) {
+      window.location.href = `/company/chat?sessionId=${result.sessionId}`
+    } else {
+      ElMessage.error('创建会话失败，请重试')
     }
-  });
-};
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('创建会话失败:', error)
+  } finally {
+    loading.close()
+  }
+}
 
 // 处理更多操作
-const handleMoreAction = ({ type, application }) => {
-  if (type === 'favorite') {
-    toggleFavoriteStudent(application);
-  } else if (type === 'blacklist') {
-    toggleBlacklistStudent(application);
-  } else if (type === 'notes') {
-    openNotesDialog(application);
+const handleMoreAction = async (command) => {
+  const { type, application } = command
+  
+  if (!application) return
+  
+  switch (type) {
+    case 'favorite':
+      handleFavoriteStudent(application)
+      break
+    case 'blacklist':
+      handleBlacklistStudent(application)
+      break
+    case 'notes':
+      handleAddNotes(application)
+      break
+    default:
+      break
   }
-};
+}
 
-// 切换收藏学生
-const toggleFavoriteStudent = async (application) => {
+// 收藏学生
+const handleFavoriteStudent = async (application) => {
   try {
-    // 实际开发时使用API调用
-    // await toggleFavorite(application.id, !application.isFavorite);
-    
-    // 模拟操作成功
-    setTimeout(() => {
-      application.isFavorite = !application.isFavorite;
-      ElMessage.success(application.isFavorite ? '已收藏学生' : '已取消收藏');
-    }, 500);
-  } catch (error) {
-    console.error('操作失败:', error);
-    ElMessage.error('操作失败，请稍后重试');
-  }
-};
-
-// 切换黑名单
-const toggleBlacklistStudent = async (application) => {
-  if (!application.isBlacklisted) {
-    // 确认加入黑名单
-    ElMessageBox.confirm('加入黑名单后，该学生将无法再次申请贵公司岗位，是否继续？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }).then(async () => {
-      try {
-        // 实际开发时使用API调用
-        // await toggleBlacklist(application.id, true);
-        
-        // 模拟操作成功
-        setTimeout(() => {
-          application.isBlacklisted = true;
-          ElMessage.success('已将学生加入黑名单');
-        }, 500);
-      } catch (error) {
-        console.error('操作失败:', error);
-        ElMessage.error('操作失败，请稍后重试');
-      }
-    }).catch(() => {});
-  } else {
-    try {
-      // 实际开发时使用API调用
-      // await toggleBlacklist(application.id, false);
-      
-      // 模拟操作成功
-      setTimeout(() => {
-        application.isBlacklisted = false;
-        ElMessage.success('已将学生移出黑名单');
-      }, 500);
-    } catch (error) {
-      console.error('操作失败:', error);
-      ElMessage.error('操作失败，请稍后重试');
+    if (application.isFavorite) {
+      // 取消收藏
+      await callApi(toggleFavoriteStudent(application.studentId, false), {
+        showSuccess: true,
+        successMsg: '已取消收藏'
+      })
+      application.isFavorite = false
+    } else {
+      // 添加收藏
+      await callApi(toggleFavoriteStudent(application.studentId, true), {
+        showSuccess: true,
+        successMsg: '已收藏学生'
+      })
+      application.isFavorite = true
     }
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('收藏学生操作失败:', error)
   }
-};
+}
 
-// 打开备注对话框
-const openNotesDialog = (application) => {
-  selectedApplication.value = application;
-  applicationNotes.value = application.notes || '';
-  notesDialogVisible.value = true;
-};
-
-// 保存应用备注
-const saveApplicationNotes = async () => {
-  if (!selectedApplication.value) return;
-  
-  savingNotes.value = true;
+// 黑名单学生
+const handleBlacklistStudent = async (application) => {
   try {
-    // 实际开发时使用API调用
-    // await saveNotes(selectedApplication.value.id, applicationNotes.value);
-    
-    // 模拟保存成功
-    setTimeout(() => {
-      selectedApplication.value.notes = applicationNotes.value;
-      selectedApplication.value.hasNotes = !!applicationNotes.value;
+    if (application.isBlacklisted) {
+      // 移出黑名单
+      await callApi(toggleBlacklistStudent(application.studentId, '', false), {
+        showSuccess: true,
+        successMsg: '已将学生移出黑名单'
+      })
+      application.isBlacklisted = false
+    } else {
+      // 添加到黑名单
+      // 先让用户输入原因
+      ElMessageBox.prompt('请输入将该学生加入黑名单的原因', '加入黑名单', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPattern: /\S+/,
+        inputErrorMessage: '请输入原因'
+      }).then(async ({ value }) => {
+        await callApi(toggleBlacklistStudent(application.studentId, value, true), {
+          showSuccess: true,
+          successMsg: '已将学生加入黑名单'
+        })
+        application.isBlacklisted = true
+      }).catch(() => {})
+    }
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('黑名单操作失败:', error)
+  }
+}
+
+// 添加备注
+const handleAddNotes = (application) => {
+  ElMessageBox.prompt(
+    '请输入对该学生的备注信息',
+    application.hasNotes ? '编辑备注' : '添加备注',
+    {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValue: application.notes || '',
+      inputType: 'textarea'
+    }
+  ).then(async ({ value }) => {
+    try {
+      await callApi(processApplication(
+        application.id,
+        application.status,
+        value
+      ), {
+        showSuccess: true,
+        successMsg: '备注保存成功'
+      })
       
-      ElMessage.success('备注已保存');
-      notesDialogVisible.value = false;
-      savingNotes.value = false;
-    }, 500);
-  } catch (error) {
-    console.error('保存备注失败:', error);
-    ElMessage.error('保存备注失败，请稍后重试');
-    savingNotes.value = false;
-  }
-};
-
-// 打开批量下载对话框
-const openBatchDownloadDialog = (job = null) => {
-  selectedJob.value = job;
-  
-  // 计算可下载的简历数量
-  if (job) {
-    availableResumesCount.value = job.applications.filter(app => app.hasResume).length;
-  } else {
-    availableResumesCount.value = studentApplications.value.filter(app => app.hasResume).length;
-  }
-  
-  batchDownloadVisible.value = true;
-};
-
-// 确认批量下载
-const confirmBatchDownload = async () => {
-  if (downloadOptions.value.length === 0) {
-    return ElMessage.warning('请至少选择一种简历类型');
-  }
-  
-  downloading.value = true;
-  try {
-    // 实际开发时使用API调用
-    // await batchDownloadResumes({
-    //   jobId: selectedJob.value ? selectedJob.value.id : null,
-    //   includeAttachments: downloadOptions.value.includes('attachments'),
-    //   includeStructured: downloadOptions.value.includes('structured')
-    // });
-    
-    // 模拟下载
-    setTimeout(() => {
-      ElMessage.success('简历打包下载中，请稍候...');
-      batchDownloadVisible.value = false;
-      downloading.value = false;
-    }, 1000);
-  } catch (error) {
-    console.error('批量下载失败:', error);
-    ElMessage.error('批量下载失败，请稍后重试');
-    downloading.value = false;
-  }
-};
-
-// 分页相关
-const handleSizeChange = (val) => {
-  pageSize.value = val;
-  loadStudentApplications();
-};
-
-const handleCurrentChange = (val) => {
-  currentPage.value = val;
-  loadStudentApplications();
-};
-
-// 监听视图模式变化
-watch(viewMode, (newValue) => {
-  if (newValue === 'job') {
-    loadJobApplications();
-  } else {
-    loadStudentApplications();
-  }
-});
-
-// 生命周期钩子
-onMounted(() => {
-  loadJobApplications();
-});
+      application.notes = value
+      application.hasNotes = !!value
+    } catch (error) {
+      // 错误已由callApi处理
+      console.error('保存备注失败:', error)
+    }
+  }).catch(() => {})
+}
 </script>
 
 <style scoped>

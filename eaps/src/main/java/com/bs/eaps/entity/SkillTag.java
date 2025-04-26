@@ -5,15 +5,28 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 /**
- * 学生技能标签实体类
+ * 技能标签实体类
  */
 @Data
 @TableName("skill_tag")
 public class SkillTag {
 
-    @TableId(type = IdType.AUTO)
+    /**
+     * 标签ID
+     */
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    /**
+     * 标签名称
+     */
     private String name;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createdAt;
 }

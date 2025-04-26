@@ -226,8 +226,23 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useCounselorStore } from '@/store/counselorStore'
+
+// 使用Pinia store
+const counselorStore = useCounselorStore()
+const route = useRoute()
+const router = useRouter()
+
+// 页面状态
+const activeTab = ref('all')
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalReports = ref(0)
+const reportDetailVisible = ref(false)
+const currentReport = ref(null)
 
 // 筛选表单
 const filterForm = reactive({
@@ -244,186 +259,113 @@ const actionForm = reactive({
 
 const actionFormRef = ref(null)
 
-// 页码相关
-const currentPage = ref(1)
-const pageSize = ref(10)
-const totalReports = ref(0)
+// 使用store中的loading状态和举报任务列表
+const loading = computed(() => counselorStore.loading.reports)
+const reportTasks = computed(() => counselorStore.reportTasks)
 
-// 表格数据
-const reportList = ref([])
-const loading = ref(false)
-const activeTab = ref('pending')
-
-// 举报详情相关
-const reportDetailVisible = ref(false)
-const currentReport = ref(null)
-
-// 过滤后的举报列表
+// 根据筛选条件和Tab过滤举报列表
 const filteredReportList = computed(() => {
-  let list = [...reportList.value]
+  let result = [...reportTasks.value]
   
-  // 根据选项卡筛选
+  // 根据活动的Tab过滤
   if (activeTab.value !== 'all') {
-    list = list.filter(item => item.status === activeTab.value)
+    result = result.filter(report => report.status === activeTab.value)
   }
   
-  // 根据表单筛选
+  // 根据过滤表单过滤
   if (filterForm.type) {
-    list = list.filter(item => item.type === filterForm.type)
+    result = result.filter(report => report.type === filterForm.type)
   }
   
   if (filterForm.status) {
-    list = list.filter(item => item.status === filterForm.status)
+    result = result.filter(report => report.status === filterForm.status)
   }
   
-  return list
-})
-
-// 获取类型文字
-const getTypeText = (type) => {
-  const typeMap = {
-    'rating': '评价举报',
-    'message': '消息举报'
+  // 检查URL中是否有类型参数
+  const routeType = route.query.type
+  if (routeType && !filterForm.type) {
+    result = result.filter(report => report.type === routeType)
   }
-  return typeMap[type] || type
-}
+  
+  return result
+})
 
 // 获取类型标签
 const getTypeTag = (type) => {
-  const tagMap = {
-    'rating': 'warning',
-    'message': 'info'
+  switch (type) {
+    case 'rating': return 'warning'
+    case 'message': return 'info'
+    default: return ''
   }
-  return tagMap[type] || ''
 }
 
-// 获取状态文字
-const getStatusText = (status) => {
-  const statusMap = {
-    'pending': '待处理',
-    'resolved': '已处理'
+// 获取类型文本
+const getTypeText = (type) => {
+  switch (type) {
+    case 'rating': return '评价举报'
+    case 'message': return '消息举报'
+    default: return '未知类型'
   }
-  return statusMap[status] || status
 }
 
-// 获取状态标签类型
+// 获取状态标签
 const getStatusType = (status) => {
-  const typeMap = {
-    'pending': 'danger',
-    'resolved': 'success'
-  }
-  return typeMap[status] || ''
-}
-
-// 获取举报列表
-const fetchReportList = async () => {
-  loading.value = true
-  try {
-    // 模拟接口请求
-    setTimeout(() => {
-      // 模拟数据
-      reportList.value = [
-        {
-          id: 1,
-          type: 'rating',
-          reporter: '张同学',
-          targetInfo: '对"腾讯科技有限公司"的评价',
-          reason: '评价内容虚假，不符合实际情况',
-          createdAt: '2023-07-15 10:30:45',
-          status: 'pending',
-          targetDetails: {
-            company: '腾讯科技有限公司',
-            score: 1.5,
-            content: '公司面试流程混乱，HR 态度恶劣，承诺的面试福利也没有兑现，不推荐大家投递。',
-            createdAt: '2023-07-14 16:22:30'
-          }
-        },
-        {
-          id: 2,
-          type: 'message',
-          reporter: '李企业',
-          targetInfo: '张同学在私信中发送违规内容',
-          reason: '学生在私信中发送辱骂性言论',
-          createdAt: '2023-07-16 14:20:15',
-          status: 'pending',
-          targetDetails: {
-            sender: '张同学',
-            content: '你们公司就是骗子，浪费我时间！@#¥%……&*（）',
-            sentAt: '2023-07-16 14:15:30',
-            session: '腾讯科技前端开发工程师岗位沟通'
-          }
-        },
-        {
-          id: 3,
-          type: 'rating',
-          reporter: '王企业',
-          targetInfo: '对"阿里巴巴集团"的评价',
-          reason: '学生从未参加我们公司的面试，却发布了负面评价',
-          createdAt: '2023-07-17 09:45:10',
-          status: 'pending',
-          targetDetails: {
-            company: '阿里巴巴集团',
-            score: 2,
-            content: '面试官迟到半小时，提的问题也很奇怪，没有问专业技能，全是些无关的问题。最后也没有任何反馈。',
-            createdAt: '2023-07-17 09:30:20'
-          }
-        },
-        {
-          id: 4,
-          type: 'message',
-          reporter: '赵同学',
-          targetInfo: '李企业在私信中发送骚扰内容',
-          reason: '企业HR发送不适当的内容',
-          createdAt: '2023-07-18 16:50:25',
-          status: 'resolved',
-          resolvedAt: '2023-07-19 10:15:40',
-          resolution: '经查证，举报属实，已删除相关消息并对企业进行警告。',
-          targetDetails: {
-            sender: '李企业',
-            content: '你的照片看起来很漂亮，可以加个微信私聊吗？工作以外我们可以多了解一下。',
-            sentAt: '2023-07-18 16:45:15',
-            session: '产品经理岗位沟通'
-          }
-        },
-        {
-          id: 5,
-          type: 'rating',
-          reporter: '钱企业',
-          targetInfo: '对"百度在线网络技术有限公司"的评价',
-          reason: '评价中包含虚假信息和诋毁内容',
-          createdAt: '2023-07-20 11:30:05',
-          status: 'resolved',
-          resolvedAt: '2023-07-20 15:22:10',
-          resolution: '经核实，评价内容确有不实之处，已删除该评价。',
-          targetDetails: {
-            company: '百度在线网络技术有限公司',
-            score: 1,
-            content: '这家公司完全是骗子，根本不会录用人，只是收集简历和个人信息，大家千万不要上当！',
-            createdAt: '2023-07-20 10:15:30'
-          }
-        }
-      ]
-      
-      totalReports.value = reportList.value.length
-      loading.value = false
-    }, 1000)
-  } catch (error) {
-    console.error('获取举报列表失败:', error)
-    ElMessage.error('获取举报列表失败')
-    loading.value = false
+  switch (status) {
+    case 'pending': return 'warning'
+    case 'resolved': return 'success'
+    default: return ''
   }
 }
 
-// 切换选项卡
-const handleTabChange = (tab) => {
+// 获取状态文本
+const getStatusText = (status) => {
+  switch (status) {
+    case 'pending': return '待处理'
+    case 'resolved': return '已处理'
+    default: return '未知状态'
+  }
+}
+
+// 处理查询
+const handleSearch = () => {
   currentPage.value = 1
+  loadReportTasks()
+}
+
+// 重置过滤条件
+const resetFilter = () => {
+  filterForm.type = ''
+  filterForm.status = ''
+  handleSearch()
+}
+
+// 处理Tab切换
+const handleTabChange = () => {
+  currentPage.value = 1
+  loadReportTasks()
+}
+
+// 处理每页数量变化
+const handleSizeChange = (val) => {
+  pageSize.value = val
+  loadReportTasks()
+}
+
+// 处理页码变化
+const handleCurrentChange = (val) => {
+  currentPage.value = val
+  loadReportTasks()
+}
+
+// 行点击
+const handleRowClick = (row) => {
+  viewReport(row)
 }
 
 // 查看举报详情
 const viewReport = (report) => {
-  currentReport.value = { ...report }
+  currentReport.value = report
   reportDetailVisible.value = true
-  
   // 重置处理表单
   actionForm.remarks = ''
   actionForm.punishScore = false
@@ -431,84 +373,148 @@ const viewReport = (report) => {
 }
 
 // 处理举报
-const handleReportAction = (report, action) => {
-  const actionText = action === 'ignore' ? '忽略' : '删除内容并惩罚'
-  const confirmTitle = action === 'ignore' ? '确认忽略举报' : '确认删除内容'
-  let confirmContent = `确定要${actionText}这条举报吗？`
+const handleReportAction = async (report, action) => {
+  // 确保有当前举报
+  if (!report) return
   
-  if (action === 'remove' && actionForm.punishScore) {
-    confirmContent += `\n将扣除举报对象 ${actionForm.scoreValue} 分行为分。`
-  }
-  
-  ElMessageBox.confirm(
-    confirmContent,
-    confirmTitle,
-    {
+  try {
+    // 确认操作
+    const confirmMessage = action === 'ignore' 
+      ? '确定忽略此举报吗？' 
+      : '确定删除被举报内容吗？'
+      
+    await ElMessageBox.confirm(confirmMessage, '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: action === 'ignore' ? 'info' : 'warning'
+      type: action === 'ignore' ? 'warning' : 'error'
+    })
+    
+    // 准备处理意见
+    let reason = actionForm.remarks
+    let notes = undefined
+    
+    // 如果是删除且需要扣除行为分
+    if (action === 'remove' && actionForm.punishScore) {
+      notes = `扣除行为分: ${actionForm.scoreValue}`
     }
-  ).then(() => {
-    // 模拟API调用
-    setTimeout(() => {
-      // 更新本地数据
-      const index = reportList.value.findIndex(item => item.id === report.id)
-      if (index !== -1) {
-        const updatedReport = { ...reportList.value[index] }
-        updatedReport.status = 'resolved'
-        updatedReport.resolvedAt = new Date().toLocaleString()
-        
-        // 构建处理结果描述
-        let resolution = action === 'ignore' ? '经审核，举报内容不构成违规，已忽略该举报。' : '经审核，举报属实，已删除相关内容'
-        
-        if (actionForm.remarks) {
-          resolution += `\n备注：${actionForm.remarks}`
-        }
-        
-        if (action === 'remove' && actionForm.punishScore) {
-          resolution += `\n已扣除行为分 ${actionForm.scoreValue} 分。`
-        }
-        
-        updatedReport.resolution = resolution
-        reportList.value[index] = updatedReport
-      }
-      
-      ElMessage.success('举报处理成功')
+    
+    // 调用store的processTask方法处理任务
+    const result = await counselorStore.processTask({
+      taskId: report.id,
+      type: 'reportHandling',
+      subtype: report.type, // 传递举报子类型（rating或message）
+      action,
+      reason,
+      notes
+    })
+    
+    if (result.success) {
+      ElMessage.success(action === 'ignore' ? '已忽略此举报' : '已删除被举报内容')
       reportDetailVisible.value = false
-    }, 500)
-  }).catch(() => {})
+      // 重新加载数据
+      loadReportTasks()
+      // 通知Dashboard更新
+      counselorStore.fetchDashboardData()
+    } else {
+      ElMessage.error(result.message || '处理失败')
+    }
+  } catch (e) {
+    // 用户取消操作，不做处理
+    if (e !== 'cancel') {
+      console.error('处理举报出错:', e)
+      ElMessage.error('操作失败: ' + e.message)
+    }
+  }
 }
 
-// 处理搜索
-const handleSearch = () => {
-  currentPage.value = 1
+// 加载举报处理任务
+const loadReportTasks = async () => {
+  try {
+    const filters = {}
+    
+    // 根据当前tab状态添加筛选条件
+    if (activeTab.value !== 'all') {
+      filters.status = activeTab.value
+    }
+    
+    // 添加搜索筛选
+    if (filterForm.type) {
+      filters.type = filterForm.type
+    }
+    
+    if (filterForm.status) {
+      filters.status = filterForm.status
+    }
+    
+    // 检查URL中是否有类型参数
+    const routeType = route.query.type
+    if (routeType && !filters.type) {
+      filters.type = routeType
+    }
+    
+    // 检查是否有来自工作台的任务ID
+    const fromDashboard = route.query.fromDashboard === 'true'
+    const taskId = route.query.taskId
+    
+    if (fromDashboard && taskId) {
+      filters.taskId = taskId
+    }
+    
+    const result = await counselorStore.fetchReportTasks({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      filters
+    })
+    
+    totalReports.value = result.total || 0
+    
+    // 如果有特定的任务ID，自动打开该举报详情
+    if (taskId && reportTasks.value.length > 0) {
+      const targetReport = reportTasks.value.find(r => r.id.toString() === taskId.toString())
+      if (targetReport) {
+        viewReport(targetReport)
+      }
+    }
+  } catch (error) {
+    console.error('加载举报处理任务失败', error)
+    ElMessage.error('加载数据失败，请刷新重试')
+  }
 }
 
-// 重置筛选
-const resetFilter = () => {
-  filterForm.type = ''
-  filterForm.status = ''
-  handleSearch()
-}
-
-// 处理行点击
-const handleRowClick = (row) => {
-  viewReport(row)
-}
-
-// 分页相关
-const handleSizeChange = (size) => {
-  pageSize.value = size
-}
-
-const handleCurrentChange = (page) => {
-  currentPage.value = page
-}
-
-// 页面加载时获取数据
+// 页面加载时初始化数据
 onMounted(() => {
-  fetchReportList()
+  // 检查URL参数，设置初始Tab和筛选条件
+  if (route.query.status) {
+    activeTab.value = route.query.status.toString()
+  }
+  
+  if (route.query.type) {
+    filterForm.type = route.query.type.toString()
+  }
+  
+  // 加载数据
+  loadReportTasks()
 })
+
+// 监听路由变化，重新加载数据
+watch(
+  () => route.query,
+  (newQuery) => {
+    if (newQuery.status) {
+      activeTab.value = newQuery.status.toString()
+    }
+    
+    if (newQuery.type) {
+      filterForm.type = newQuery.type.toString()
+    }
+    
+    if (newQuery.fromDashboard === 'true') {
+      // 重置到第一页
+      currentPage.value = 1
+      loadReportTasks()
+    }
+  }
+)
 </script>
 
 <style scoped>

@@ -19,7 +19,7 @@ export {
 
 // 导出常用API函数
 export const { login, register, logout, getUserInfo } = userApi
-export const { getJobList, getJobDetail, applyJob } = jobApi
+export const { getJobList, getJobDetail, applyForJob } = jobApi
 export const { getStudentProfile, updateStudentProfile } = studentApi
 export const { getCompanyProfile, updateCompanyProfile } = companyApi
 

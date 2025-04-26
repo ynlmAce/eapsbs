@@ -28,7 +28,6 @@ public class JobTagServiceImpl extends ServiceImpl<JobTagMapper, JobTag> impleme
     @Override
     public List<JobTag> getAllTags() {
         LambdaQueryWrapper<JobTag> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(JobTag::getStatus, 1); // 只获取启用状态的标签
         wrapper.orderByAsc(JobTag::getId);
         return list(wrapper);
     }
@@ -55,15 +54,11 @@ public class JobTagServiceImpl extends ServiceImpl<JobTagMapper, JobTag> impleme
         // 设置时间
         LocalDateTime now = LocalDateTime.now();
         if (jobTag.getId() == null) {
-            // 新增
-            jobTag.setCreateTime(now);
-            jobTag.setUpdateTime(now);
-            if (jobTag.getStatus() == null) {
-                jobTag.setStatus(1); // 默认启用
-            }
+            // 新增，只设置created_at字段
+            jobTag.setCreatedAt(now);
         } else {
-            // 更新
-            jobTag.setUpdateTime(now);
+            // 更新，不设置updateTime，因为数据库没有该字段
+            // created_at有默认值，不需要更新
         }
         return saveOrUpdate(jobTag);
     }

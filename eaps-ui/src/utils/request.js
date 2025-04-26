@@ -24,20 +24,18 @@ request.interceptors.request.use(
       url: config.url,
       method: config.method,
       hasToken: !!token,
-      tokenValue: token ? `${token.substring(0, 10)}...` : 'none',
-      headers: { ...config.headers }
+      tokenValue: token ? `${token.substring(0, 10)}...` : 'none'
     })
     
     if (token) {
       // 确保token的正确格式和传递
-      // 后端只接受auth头中的token
+      // 后端接受auth头中的token
       config.headers.auth = token
       
-      // 添加多种token格式，增加成功概率
+      // 为了兼容性，也添加标准的Authorization头
       config.headers.Authorization = `Bearer ${token}`
-      config.headers['X-Auth-Token'] = token
       
-      console.log('已添加token到请求头: auth, Authorization, X-Auth-Token')
+      console.log('已添加token到请求头: auth, Authorization')
     } else {
       console.warn('未找到token，请求可能会被拒绝')
     }
@@ -61,32 +59,32 @@ request.interceptors.response.use(
     const res = response.data
     console.log('API响应原始数据:', res)
     
-    if (res.error === 0) {
-      // 返回业务数据主体
-      return res.body
-    } else if (res.error === 401) {
-      // 未登录，跳转到登录页
-      ElMessage.error('未登录或登录已过期，请重新登录')
+    // 处理业务层面的错误代码，如401表示登录失效
+    if (res && res.error === 401) {
+      ElMessage.error('登录已过期，请重新登录')
       clearUserAuth()
-      router.push('/login')
-      return Promise.reject(new Error('未登录或登录已过期'))
-    } else if (res.error === 403) {
-      // 权限不足
-      ElMessage.error('您没有权限执行此操作')
-      return Promise.reject(new Error('权限不足'))
-    } else if (res.error === 500) {
-      // 系统异常
-      ElMessage.error('系统异常: ' + res.message)
-      return Promise.reject(new Error(res.message))
-    } else {
-      // 业务异常
-      ElMessage.error(res.message || '未知错误')
-      return Promise.reject(new Error(res.message || '未知错误'))
+      setTimeout(() => {
+        router.push('/login')
+      }, 1000)
+      return Promise.reject(new Error('登录已过期'))
     }
+    
+    // 返回完整的响应对象，让调用方自己决定如何处理
+    return res
   },
   error => {
     // 请求失败时的错误信息
     console.error('请求错误:', error)
+    
+    // 特别处理JWT过期错误
+    if (error.message && error.message.includes('JWT expired')) {
+      ElMessage.error('登录已过期，请重新登录')
+      clearUserAuth()
+      setTimeout(() => {
+        router.push('/login')
+      }, 1000)
+      return Promise.reject(error)
+    }
     
     if (error.response) {
       console.error('响应状态:', error.response.status, error.response.statusText)

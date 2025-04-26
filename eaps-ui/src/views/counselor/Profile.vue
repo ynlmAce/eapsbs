@@ -126,6 +126,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { OfficeBuilding, Phone, Message } from '@element-plus/icons-vue'
+import { getCounselorProfile, updateCounselorProfile } from '@/api/counselor'
+import { changePassword as apiChangePassword } from '@/api/user'
+import { useRouter } from 'vue-router'
 
 // 表单数据
 const profileForm = reactive({
@@ -194,35 +197,26 @@ const passwordRules = {
 const profileFormRef = ref(null)
 const passwordFormRef = ref(null)
 
+// 路由
+const router = useRouter()
+
 // 获取辅导员信息
 const fetchCounselorProfile = async () => {
   try {
-    // 模拟从API获取数据
-    const response = {
-      data: {
-        error: 0,
-        body: {
-          employeeId: 'T20240001',
-          name: '张老师',
-          contact: '13800138000',
-          email: 'zhang@example.edu.cn',
-          college: '计算机科学与技术学院',
-          title: '副教授',
-          specialization: '计算机科学',
-          experience: 8,
-          officeLocation: '教学楼B区302室',
-          officeHours: '周一至周五 14:00-16:00',
-          introduction: '从事大学生就业指导工作8年，擅长IT行业就业咨询和职业规划指导。'
-        },
-        message: '获取成功'
+    const response = await getCounselorProfile()
+    if (response && response.error === 0 && response.body) {
+      // 将body中的响应数据复制到表单对象中
+      Object.assign(profileForm, response.body)
+      
+      // 如果某些字段未从后端返回，设置默认值
+      if (profileForm.experience === null || profileForm.experience === undefined) {
+        profileForm.experience = 0
       }
-    }
-    
-    // 如果API调用成功，更新表单数据
-    if (response.data.error === 0) {
-      Object.assign(profileForm, response.data.body)
+      
+      console.log('辅导员资料已加载：', profileForm)
     } else {
-      ElMessage.error(response.data.message || '获取个人信息失败')
+      console.error('获取辅导员档案失败，响应格式不正确', response)
+      ElMessage.error('获取个人信息失败，数据格式不正确')
     }
   } catch (error) {
     console.error('获取个人信息出错:', error)
@@ -237,8 +231,29 @@ const submitForm = async () => {
   await profileFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        // 这里应该调用实际的API
-        ElMessage.success('个人信息保存成功')
+        // 提交前检查必填项是否已填写
+        if (!profileForm.email) {
+          ElMessage.warning('请填写电子邮箱')
+          return
+        }
+        
+        // 创建一个新对象，防止提交非表单数据
+        const profileData = { ...profileForm }
+        console.log('提交的数据：', profileData)
+        
+        // 提交数据更新请求
+        const response = await updateCounselorProfile(profileData)
+        
+        // 处理响应
+        if (response && response.error === 0) {
+          ElMessage.success('个人信息保存成功')
+          
+          // 重新获取信息，确保显示最新数据
+          await fetchCounselorProfile()
+        } else {
+          console.error('保存个人信息失败：', response)
+          ElMessage.error('保存失败：' + (response.message || '未知错误'))
+        }
       } catch (error) {
         console.error('保存个人信息出错:', error)
         ElMessage.error('保存失败，请稍后重试')
@@ -271,12 +286,40 @@ const changePassword = async () => {
   await passwordFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        // 这里应该调用实际的API
-        ElMessage.success('密码修改成功')
-        resetPasswordForm()
+        // 首先检查localStorage中是否有用户信息和ID
+        const userInfo = localStorage.getItem('userInfo');
+        if (!userInfo) {
+          ElMessage.error('登录信息已失效，请重新登录');
+          setTimeout(() => {
+            router.push('/login');
+          }, 2000);
+          return;
+        }
+        
+        console.log('开始修改密码，当前密码数据:', {
+          oldPassword: passwordForm.oldPassword.length + '位字符', 
+          newPassword: passwordForm.newPassword.length + '位字符'
+        });
+        
+        const response = await apiChangePassword(passwordForm.oldPassword, passwordForm.newPassword)
+        
+        if (response && response.error === 0) {
+          ElMessage.success('密码修改成功')
+          resetPasswordForm()
+        } else {
+          console.error('修改密码失败：', response)
+          ElMessage.error('修改密码失败：' + (response.message || '未知错误'))
+        }
       } catch (error) {
         console.error('修改密码出错:', error)
-        ElMessage.error('修改密码失败，请稍后重试')
+        if (error.message && error.message.includes('未能获取用户ID')) {
+          ElMessage.error('登录信息已失效，请重新登录');
+          setTimeout(() => {
+            router.push('/login');
+          }, 2000);
+        } else {
+          ElMessage.error('修改密码失败，请稍后重试：' + (error.message || '未知错误'))
+        }
       }
     } else {
       ElMessage.warning('请正确填写表单信息')
@@ -294,6 +337,7 @@ const resetPasswordForm = () => {
 
 // 页面加载时获取数据
 onMounted(() => {
+  console.log('辅导员个人页面已加载，开始获取档案数据')
   fetchCounselorProfile()
 })
 </script>

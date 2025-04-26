@@ -84,6 +84,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { UserFilled, Briefcase, Files, ChatDotRound, ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/user'
+import { changePassword } from '@/api/user'
 
 const router = useRouter()
 const route = useRoute()
@@ -136,27 +137,24 @@ const submitPasswordChange = async () => {
   const valid = await passwordFormRef.value.validate().catch(() => false)
   if (!valid) return
 
-  // 模拟API调用，实际项目中应替换为真实API
-  setTimeout(() => {
-    ElMessage.success('密码修改成功')
-    passwordDialogVisible.value = false
-    // 重置表单
-    passwordFormRef.value.resetFields()
-  }, 1000)
-
-  /**
-   * TODO: 实际实现时调用密码修改API
-   * const res = await api.user.changePassword({
-   *   oldPassword: passwordForm.oldPassword,
-   *   newPassword: passwordForm.newPassword
-   * })
-   * if (res.success) {
-   *   ElMessage.success('密码修改成功')
-   *   passwordDialogVisible.value = false
-   * } else {
-   *   ElMessage.error(res.message || '密码修改失败')
-   * }
-   */
+  try {
+    const res = await changePassword({
+      oldPassword: passwordForm.oldPassword,
+      newPassword: passwordForm.newPassword
+    })
+    
+    if (res && res.error === 0) {
+      ElMessage.success('密码修改成功')
+      passwordDialogVisible.value = false
+      // 重置表单
+      passwordFormRef.value.resetFields()
+    } else {
+      ElMessage.error(res?.message || '密码修改失败')
+    }
+  } catch (error) {
+    console.error('密码修改失败:', error)
+    ElMessage.error('密码修改失败，请稍后重试')
+  }
 }
 
 // 跳转到个人档案页

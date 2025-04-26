@@ -44,6 +44,12 @@ public class JobQueryDTO {
     private String jobType;
 
     /**
+     * 岗位状态
+     * 可选值: all, recruiting, active, pending, rejected, ended, closed
+     */
+    private String status;
+
+    /**
      * 页码
      */
     private Integer page = 1;

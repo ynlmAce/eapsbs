@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -94,7 +95,7 @@ public class JobPosting implements Serializable {
      * 岗位有效期截止日
      */
     @TableField("valid_until")
-    private LocalDateTime validUntil;
+    private LocalDate validUntil;
 
     /**
      * 联系人

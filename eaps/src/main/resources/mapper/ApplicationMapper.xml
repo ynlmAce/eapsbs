@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bs.eaps.mapper.ApplicationMapper">
+    
+    <!-- 查询学生的申请记录 -->
+    <select id="selectStudentApplications" resultType="java.util.Map">
+        SELECT 
+            a.id AS applicationId,
+            a.student_id AS studentId,
+            a.job_id AS jobId,
+            a.resume_id AS resumeId,
+            a.status,
+            a.applied_at AS appliedAt,
+            a.updated_at AS lastUpdatedAt,
+            j.title AS jobTitle,
+            j.salary,
+            j.location,
+            c.name AS companyName,
+            c.logo_path AS companyLogo
+        FROM 
+            application a
+        LEFT JOIN 
+            job_posting j ON a.job_id = j.id
+        LEFT JOIN 
+            company_profile c ON j.company_id = c.id
+        WHERE 
+            a.student_id = #{studentId}
+        <if test="status != null and status != ''">
+            AND a.status = #{status}
+        </if>
+        ORDER BY a.applied_at DESC
+    </select>
+    
+    <!-- 查询企业收到的申请 -->
+    <select id="selectCompanyApplications" resultType="java.util.Map">
+        SELECT 
+            a.id AS applicationId,
+            a.student_id AS studentId,
+            a.job_id AS jobId,
+            a.resume_id AS resumeId,
+            a.status,
+            a.applied_at AS appliedAt,
+            a.updated_at AS lastUpdatedAt,
+            j.title AS jobTitle,
+            sp.name AS studentName,
+            sp.school,
+            sp.major,
+            sp.grade
+        FROM 
+            application a
+        INNER JOIN 
+            job_posting j ON a.job_id = j.id
+        INNER JOIN 
+            student_profile sp ON a.student_id = sp.id
+        WHERE 
+            j.company_id = #{companyId}
+        <if test="jobId != null">
+            AND a.job_id = #{jobId}
+        </if>
+        <if test="studentName != null and studentName != ''">
+            AND sp.name LIKE CONCAT('%', #{studentName}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND a.status = #{status}
+        </if>
+        ORDER BY a.applied_at DESC
+    </select>
+    
+</mapper> 

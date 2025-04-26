@@ -95,6 +95,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { UserFilled, Monitor, OfficeBuilding, Briefcase, Warning, ChatDotRound, ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/user'
+import { changePassword } from '@/api/user'
+import { getTasksCount } from '@/api/counselor'
 
 const router = useRouter()
 const route = useRoute()
@@ -106,27 +108,25 @@ const activeMenu = computed(() => route.path)
 // 从userStore获取用户信息
 const userInfo = computed(() => userStore.userInfo || { name: '辅导员用户' })
 
-// 模拟待处理的任务数量
+// 待处理的任务数量
 const pendingTasksCount = ref(0)
 
 // 在组件挂载时获取待处理任务数量
-onMounted(() => {
-  // 模拟从服务器获取待办任务数量
-  setTimeout(() => {
-    pendingTasksCount.value = Math.floor(Math.random() * 10)
-  }, 1000)
-
-  /**
-   * TODO: 实际实现时调用API获取待处理任务数量
-   * const fetchPendingTasks = async () => {
-   *   const res = await api.counselor.getPendingTasksCount()
-   *   if (res.success) {
-   *     pendingTasksCount.value = res.data.count
-   *   }
-   * }
-   * fetchPendingTasks()
-   */
+onMounted(async () => {
+  fetchPendingTasks()
 })
+
+// 获取待处理任务数量
+const fetchPendingTasks = async () => {
+  try {
+    const response = await getTasksCount()
+    if (response) {
+      pendingTasksCount.value = response.total || 0
+    }
+  } catch (error) {
+    console.error('获取待处理任务数量失败:', error)
+  }
+}
 
 // 修改密码相关
 const passwordDialogVisible = ref(false)
@@ -166,30 +166,19 @@ const handlePasswordChange = () => {
 
 // 提交密码修改
 const submitPasswordChange = async () => {
-  const valid = await passwordFormRef.value.validate().catch(() => false)
-  if (!valid) return
+  try {
+    const valid = await passwordFormRef.value.validate().catch(() => false)
+    if (!valid) return
 
-  // 模拟API调用，实际项目中应替换为真实API
-  setTimeout(() => {
+    await changePassword(passwordForm.oldPassword, passwordForm.newPassword)
     ElMessage.success('密码修改成功')
     passwordDialogVisible.value = false
     // 重置表单
     passwordFormRef.value.resetFields()
-  }, 1000)
-
-  /**
-   * TODO: 实际实现时调用密码修改API
-   * const res = await api.user.changePassword({
-   *   oldPassword: passwordForm.oldPassword,
-   *   newPassword: passwordForm.newPassword
-   * })
-   * if (res.success) {
-   *   ElMessage.success('密码修改成功')
-   *   passwordDialogVisible.value = false
-   * } else {
-   *   ElMessage.error(res.message || '密码修改失败')
-   * }
-   */
+  } catch (error) {
+    console.error('修改密码失败:', error)
+    ElMessage.error(error.message || '修改密码失败')
+  }
 }
 
 // 跳转到个人信息页

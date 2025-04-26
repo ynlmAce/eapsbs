@@ -84,6 +84,10 @@ export const useUserStore = defineStore('user', {
         // 使用真实API登录
         const userInfo = await apiLogin(username, password, role);
         
+        // 增加日志，查看API返回的数据
+        console.log('登录API返回的用户信息:', userInfo);
+        
+        // 确保我们有必要的用户信息和token
         if (userInfo && userInfo.token) {
           // 确保角色存储一致性 - 转为小写存储
           const normalizedRole = userInfo.role ? userInfo.role.toLowerCase() : role.toLowerCase();
@@ -100,17 +104,25 @@ export const useUserStore = defineStore('user', {
           localStorage.setItem('token', userInfo.token);
           localStorage.setItem('userInfo', JSON.stringify(userInfo));
           localStorage.setItem('userRole', normalizedRole);
-     
-          console.log('登录成功')
           
-          return { success: true };
+          // 明确存储用户ID
+          if (userInfo.id) {
+            localStorage.setItem('userId', userInfo.id.toString());
+            console.log('成功保存用户ID:', userInfo.id);
+          } else {
+            console.warn('用户登录成功但无ID信息');
+          }
+     
+          console.log('登录成功，用户信息已保存');
+          
+          return { success: true, userInfo };
         }
         
         // 如果API返回失败或没有token
-        console.log('登录失败:', userInfo);
+        console.log('登录失败:缺少token或必要的用户信息', userInfo);
         return {
           success: false,
-          message: userInfo?.message || '登录失败，请检查账号和密码'
+          message: '登录失败，请检查账号和密码'
         };
       } catch (error) {
         console.error('登录出错:', error);

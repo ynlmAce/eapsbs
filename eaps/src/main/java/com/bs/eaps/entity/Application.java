@@ -69,6 +69,6 @@ public class Application implements Serializable {
     /**
      * 最后更新时间
      */
-    @TableField("last_updated_at")
+    @TableField("updated_at")
     private LocalDateTime lastUpdatedAt;
 }

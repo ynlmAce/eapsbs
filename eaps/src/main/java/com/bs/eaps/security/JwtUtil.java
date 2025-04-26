@@ -28,6 +28,9 @@ public class JwtUtil {
     @Value("${jwt.expiration}")
     private long expiration;
 
+    @Value("${jwt.allowed-clock-skew:30}")
+    private long allowedClockSkew;
+
     /**
      * 获取JWT中的用户名
      */
@@ -56,6 +59,7 @@ public class JwtUtil {
     private Claims extractAllClaims(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
+                .setAllowedClockSkewSeconds(allowedClockSkew)
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
@@ -126,5 +130,21 @@ public class JwtUtil {
         }
 
         return Keys.hmacShaKeyFor(secureKeyBytes);
+    }
+
+    /**
+     * 解析JWT令牌
+     */
+    public Claims parseToken(String token) {
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .setAllowedClockSkewSeconds(allowedClockSkew)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+        } catch (Exception e) {
+            throw new RuntimeException("JWT解析异常", e);
+        }
     }
 }

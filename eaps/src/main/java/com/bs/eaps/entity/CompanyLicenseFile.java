@@ -23,5 +23,9 @@ public class CompanyLicenseFile {
 
     private String filePath;
 
+    private Long fileSize;
+
+    private String fileType;
+
     private Date uploadedAt;
 }

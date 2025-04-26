@@ -196,8 +196,23 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useCounselorStore } from '@/store/counselorStore'
+
+// 使用Pinia store
+const counselorStore = useCounselorStore()
+const route = useRoute()
+const router = useRouter()
+
+// 页面状态
+const activeTab = ref('all')
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalCompanies = ref(0)
+const companyDetailVisible = ref(false)
+const currentCompany = ref(null)
 
 // 筛选表单
 const filterForm = reactive({
@@ -213,272 +228,231 @@ const certForm = reactive({
 
 const certFormRef = ref(null)
 
-// 页码相关
-const currentPage = ref(1)
-const pageSize = ref(10)
-const totalCompanies = ref(0)
+// 使用store中的loading状态和企业任务列表
+const loading = computed(() => counselorStore.loading.companies)
+const companyTasks = computed(() => counselorStore.companyTasks)
 
-// 表格数据
-const companyList = ref([])
-const loading = ref(false)
-const activeTab = ref('pending')
-
-// 企业详情相关
-const companyDetailVisible = ref(false)
-const currentCompany = ref(null)
-
-// 过滤后的企业列表
+// 根据筛选条件和Tab过滤企业列表
 const filteredCompanyList = computed(() => {
-  let list = [...companyList.value]
+  let result = [...companyTasks.value]
   
-  // 根据选项卡筛选
+  // 根据活动的Tab过滤
   if (activeTab.value !== 'all') {
-    list = list.filter(item => item.status === activeTab.value)
+    result = result.filter(company => company.status === activeTab.value)
   }
   
-  // 根据表单筛选
+  // 根据过滤表单过滤
   if (filterForm.name) {
-    list = list.filter(item => item.name.includes(filterForm.name))
+    result = result.filter(company => 
+      company.name && company.name.toLowerCase().includes(filterForm.name.toLowerCase())
+    )
   }
   
   if (filterForm.status) {
-    list = list.filter(item => item.status === filterForm.status)
+    result = result.filter(company => company.status === filterForm.status)
   }
   
-  return list
+  return result
 })
-
-// 禁用日期（今天之前的日期）
-const disabledDate = (time) => {
-  return time.getTime() < Date.now() - 8.64e7 // 今天之前的日期禁用
-}
-
-// 获取状态文字
-const getStatusText = (status) => {
-  const statusMap = {
-    'pending': '待审核',
-    'certified': '已认证',
-    'rejected': '已驳回',
-    'expired': '已过期'
-  }
-  return statusMap[status] || status
-}
 
 // 获取状态标签类型
 const getStatusType = (status) => {
-  const typeMap = {
-    'pending': 'warning',
-    'certified': 'success',
-    'rejected': 'danger',
-    'expired': 'info'
-  }
-  return typeMap[status] || ''
-}
-
-// 获取企业列表
-const fetchCompanyList = async () => {
-  loading.value = true
-  try {
-    // 模拟接口请求
-    setTimeout(() => {
-      // 模拟数据
-      companyList.value = [
-        {
-          id: 1,
-          name: '腾讯科技有限公司',
-          code: '91440300708461136T',
-          industry: '互联网',
-          size: '10000人以上',
-          address: '深圳市南山区高新科技园区',
-          hrContact: '张经理',
-          contactPhone: '13800138000',
-          email: 'hr@tencent.example.com',
-          description: '腾讯是中国最大的互联网综合服务提供商之一，是中国服务用户最多的互联网企业之一。',
-          logoUrl: 'https://mat1.gtimg.com/www/images/qq2012/qqlogo_1x.png',
-          licenseUrl: 'https://example.com/license.jpg',
-          status: 'certified',
-          createdAt: '2023-01-15 10:30:45',
-          certificationDate: '2023-01-20 14:22:36',
-          expiryDate: '2024-01-20'
-        },
-        {
-          id: 2,
-          name: '阿里巴巴集团',
-          code: '91330100716105852H',
-          industry: '电子商务',
-          size: '10000人以上',
-          address: '杭州市余杭区文一西路969号',
-          hrContact: '李经理',
-          contactPhone: '13900139000',
-          email: 'hr@alibaba.example.com',
-          description: '阿里巴巴集团经营多项业务，且为所投资的公司提供行政支持。',
-          logoUrl: 'https://img.alicdn.com/tfs/TB1Zv8_lxSYBuNjSspjXXX73VXa-390-63.png',
-          licenseUrl: 'https://example.com/license2.jpg',
-          status: 'pending',
-          createdAt: '2023-04-22 16:30:45',
-          certificationDate: null,
-          expiryDate: null
-        },
-        {
-          id: 3,
-          name: '字节跳动科技有限公司',
-          code: '91110108MA01GC9U3X',
-          industry: '互联网',
-          size: '10000人以上',
-          address: '北京市海淀区中关村大街1号',
-          hrContact: '王经理',
-          contactPhone: '13700137000',
-          email: 'hr@bytedance.example.com',
-          description: '字节跳动是最早将人工智能应用于移动互联网场景的科技企业之一。',
-          logoUrl: 'https://sf3-ttcdn-tos.pstatp.com/obj/ttfe/ATSX/mainland/Avatar.png',
-          licenseUrl: 'https://example.com/license3.jpg',
-          status: 'pending',
-          createdAt: '2023-05-01 09:20:15',
-          certificationDate: null,
-          expiryDate: null
-        },
-        {
-          id: 4,
-          name: '百度在线网络技术有限公司',
-          code: '91110000802100433B',
-          industry: '互联网',
-          size: '10000人以上',
-          address: '北京市海淀区上地十街10号',
-          hrContact: '赵经理',
-          contactPhone: '13600136000',
-          email: 'hr@baidu.example.com',
-          description: '百度是拥有强大互联网基础的领先AI公司。',
-          logoUrl: 'https://www.baidu.com/img/flexible/logo/pc/result.png',
-          licenseUrl: 'https://example.com/license4.jpg',
-          status: 'rejected',
-          createdAt: '2023-03-12 14:10:25',
-          certificationDate: null,
-          expiryDate: null
-        },
-        {
-          id: 5,
-          name: '小米科技有限责任公司',
-          code: '91110108551385082Q',
-          industry: '电子设备制造',
-          size: '10000人以上',
-          address: '北京市海淀区清河中街68号',
-          hrContact: '钱经理',
-          contactPhone: '13500135000',
-          email: 'hr@xiaomi.example.com',
-          description: '小米公司正式成立于2010年4月，是一家以手机、智能硬件和IoT平台为核心的互联网公司。',
-          logoUrl: 'https://cdn.cnbj1.fds.api.mi-img.com/mi.com-assets/shop/img/logo-mi2.png',
-          licenseUrl: 'https://example.com/license5.jpg',
-          status: 'expired',
-          createdAt: '2023-01-05 11:20:35',
-          certificationDate: '2023-01-10 09:15:30',
-          expiryDate: '2023-07-10'
-        }
-      ]
-      
-      totalCompanies.value = companyList.value.length
-      loading.value = false
-    }, 1000)
-  } catch (error) {
-    console.error('获取企业列表失败:', error)
-    ElMessage.error('获取企业列表失败')
-    loading.value = false
+  switch (status) {
+    case 'pending': return 'warning'
+    case 'certified': return 'success'
+    case 'rejected': return 'danger'
+    case 'expired': return 'info'
+    default: return ''
   }
 }
 
-// 切换选项卡
-const handleTabChange = (tab) => {
-  currentPage.value = 1
-}
-
-// 查看企业详情
-const viewCompany = (company) => {
-  currentCompany.value = { ...company }
-  companyDetailVisible.value = true
-  
-  // 重置认证表单
-  certForm.expiryDate = ''
-  certForm.remarks = ''
-  
-  // 设置默认有效期（一年后）
-  const oneYearLater = new Date()
-  oneYearLater.setFullYear(oneYearLater.getFullYear() + 1)
-  certForm.expiryDate = oneYearLater
-}
-
-// 处理认证
-const handleCertification = (company, action) => {
-  if (action === 'approve' && !certForm.expiryDate) {
-    return ElMessage.warning('请选择认证有效期')
+// 获取状态文本
+const getStatusText = (status) => {
+  switch (status) {
+    case 'pending': return '待审核'
+    case 'certified': return '已认证'
+    case 'rejected': return '已驳回'
+    case 'expired': return '已过期'
+    default: return '未知状态'
   }
-  
-  const actionText = action === 'approve' ? '通过' : '驳回'
-  const actionType = action === 'approve' ? 'success' : 'warning'
-  
-  ElMessageBox.confirm(
-    `确定要${actionText}【${company.name}】的企业认证申请吗？`,
-    '确认操作',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: actionType
-    }
-  ).then(() => {
-    // 模拟API调用
-    setTimeout(() => {
-      // 更新本地数据
-      const index = companyList.value.findIndex(item => item.id === company.id)
-      if (index !== -1) {
-        const updatedCompany = { ...companyList.value[index] }
-        if (action === 'approve') {
-          updatedCompany.status = 'certified'
-          updatedCompany.certificationDate = new Date().toLocaleString()
-          updatedCompany.expiryDate = certForm.expiryDate.toLocaleDateString()
-        } else {
-          updatedCompany.status = 'rejected'
-        }
-        companyList.value[index] = updatedCompany
-      }
-      
-      ElMessage({
-        type: actionType,
-        message: `已${actionText}企业认证申请`
-      })
-      
-      companyDetailVisible.value = false
-    }, 500)
-  }).catch(() => {})
 }
 
-// 处理搜索
+// 日期选择器限制日期
+const disabledDate = (time) => {
+  // 禁用今天之前的日期
+  return time.getTime() < Date.now() - 8.64e7
+}
+
+// 处理查询
 const handleSearch = () => {
   currentPage.value = 1
+  loadCompanyTasks()
 }
 
-// 重置筛选
+// 重置过滤条件
 const resetFilter = () => {
   filterForm.name = ''
   filterForm.status = ''
   handleSearch()
 }
 
-// 处理行点击
+// 处理Tab切换
+const handleTabChange = () => {
+  currentPage.value = 1
+  loadCompanyTasks()
+}
+
+// 处理每页数量变化
+const handleSizeChange = (val) => {
+  pageSize.value = val
+  loadCompanyTasks()
+}
+
+// 处理页码变化
+const handleCurrentChange = (val) => {
+  currentPage.value = val
+  loadCompanyTasks()
+}
+
+// 行点击
 const handleRowClick = (row) => {
   viewCompany(row)
 }
 
-// 分页相关
-const handleSizeChange = (size) => {
-  pageSize.value = size
+// 查看企业详情
+const viewCompany = (company) => {
+  currentCompany.value = company
+  companyDetailVisible.value = true
 }
 
-const handleCurrentChange = (page) => {
-  currentPage.value = page
+// 处理认证/驳回操作
+const handleCertification = async (company, action) => {
+  // 确保有当前企业
+  if (!company) return
+  
+  // 如果是通过认证，需要验证表单
+  if (action === 'approve') {
+    // 验证是否已选择有效期
+    if (!certForm.expiryDate) {
+      ElMessage.warning('请选择认证有效期')
+      return
+    }
+  }
+  
+  try {
+    // 确认操作
+    const confirmMessage = action === 'approve' 
+      ? '确定通过该企业的认证申请吗？' 
+      : '确定驳回该企业的认证申请吗？'
+      
+    await ElMessageBox.confirm(confirmMessage, '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: action === 'approve' ? 'success' : 'warning'
+    })
+    
+    // 调用store的processTask方法处理任务
+    const result = await counselorStore.processTask({
+      taskId: company.id,
+      type: 'companyCertification',
+      action,
+      reason: certForm.remarks,
+      notes: action === 'approve' ? `认证有效期至${certForm.expiryDate}` : undefined
+    })
+    
+    if (result.success) {
+      ElMessage.success(action === 'approve' ? '企业认证已通过' : '企业认证已驳回')
+      companyDetailVisible.value = false
+      // 重新加载数据
+      loadCompanyTasks()
+      // 通知Dashboard更新
+      counselorStore.fetchDashboardData()
+    } else {
+      ElMessage.error(result.message || '处理失败')
+    }
+  } catch (e) {
+    // 用户取消操作，不做处理
+    if (e !== 'cancel') {
+      console.error('处理认证出错:', e)
+      ElMessage.error('操作失败: ' + e.message)
+    }
+  }
 }
 
-// 页面加载时获取数据
+// 加载企业认证任务
+const loadCompanyTasks = async () => {
+  try {
+    const filters = {}
+    
+    // 根据当前tab状态添加筛选条件
+    if (activeTab.value !== 'all') {
+      filters.status = activeTab.value
+    }
+    
+    // 添加搜索筛选
+    if (filterForm.name) {
+      filters.name = filterForm.name
+    }
+    
+    if (filterForm.status) {
+      filters.status = filterForm.status
+    }
+    
+    // 检查是否有来自工作台的任务ID
+    const fromDashboard = route.query.fromDashboard === 'true'
+    const taskId = route.query.taskId
+    
+    if (fromDashboard && taskId) {
+      filters.taskId = taskId
+    }
+    
+    const result = await counselorStore.fetchCompanyTasks({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      filters
+    })
+    
+    totalCompanies.value = result.total || 0
+    
+    // 如果有特定的任务ID，自动打开该企业详情
+    if (taskId && companyTasks.value.length > 0) {
+      const targetCompany = companyTasks.value.find(c => c.id.toString() === taskId.toString())
+      if (targetCompany) {
+        viewCompany(targetCompany)
+      }
+    }
+  } catch (error) {
+    console.error('加载企业认证任务失败', error)
+    ElMessage.error('加载数据失败，请刷新重试')
+  }
+}
+
+// 页面加载时初始化数据
 onMounted(() => {
-  fetchCompanyList()
+  // 检查URL参数，设置初始Tab
+  if (route.query.status) {
+    activeTab.value = route.query.status.toString()
+  }
+  
+  // 加载数据
+  loadCompanyTasks()
 })
+
+// 监听路由变化，重新加载数据
+watch(
+  () => route.query,
+  (newQuery) => {
+    if (newQuery.status) {
+      activeTab.value = newQuery.status.toString()
+    }
+    
+    if (newQuery.fromDashboard === 'true') {
+      // 重置到第一页
+      currentPage.value = 1
+      loadCompanyTasks()
+    }
+  }
+)
 </script>
 
 <style scoped>

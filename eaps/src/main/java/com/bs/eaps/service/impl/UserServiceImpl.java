@@ -8,6 +8,7 @@ import com.bs.eaps.dto.RegisterRequest;
 import com.bs.eaps.dto.UserInfo;
 import com.bs.eaps.entity.CompanyProfile;
 import com.bs.eaps.entity.CounselorProfile;
+import com.bs.eaps.entity.HrContact;
 import com.bs.eaps.entity.StudentProfile;
 import com.bs.eaps.entity.User;
 import com.bs.eaps.mapper.CompanyProfileMapper;
@@ -65,8 +66,10 @@ public class UserServiceImpl implements UserService {
 
             log.info("用户存在: 用户名={}, 实际角色={}", user.getUsername(), user.getRole());
 
-            // 验证密码
-            if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash())) {
+            // 验证密码 - 暂时使用明文比较
+            // if (!passwordEncoder.matches(loginRequest.getPassword(),
+            // user.getPasswordHash())) {
+            if (!loginRequest.getPassword().equals(user.getPasswordHash())) {
                 log.warn("密码不正确: {}", loginRequest.getUsername());
                 throw new BusinessException("用户名或密码错误");
             }
@@ -156,7 +159,8 @@ public class UserServiceImpl implements UserService {
         // 创建用户
         User user = new User();
         user.setUsername(registerRequest.getUsername());
-        user.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
+        // user.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
+        user.setPasswordHash(registerRequest.getPassword()); // 直接使用明文密码
         user.setRole(registerRequest.getRole());
         user.setStatus(Constants.UserStatus.ACTIVE);
         user.setCreatedAt(LocalDateTime.now());
@@ -177,7 +181,8 @@ public class UserServiceImpl implements UserService {
         }
 
         user.setSecurityQuestion(securityQuestion);
-        user.setSecurityAnswerHash(passwordEncoder.encode(securityAnswer));
+        // user.setSecurityAnswerHash(passwordEncoder.encode(securityAnswer));
+        user.setSecurityAnswerHash(securityAnswer); // 直接使用明文密保答案
 
         userMapper.insert(user);
 
@@ -206,7 +211,10 @@ public class UserServiceImpl implements UserService {
             profile.setUserId(user.getId());
             profile.setName(registerRequest.getName());
             profile.setUnifiedSocialCreditCode(registerRequest.getUnifiedSocialCreditCode());
-            profile.setHrContact(registerRequest.getContact());
+
+            // 将HR联系方式初始设置为空对象实例，而不是null
+            profile.setHrContact(new HrContact());
+
             profile.setCertificationStatus("pending");
             profile.setIndustry("未设置");
             profile.setSize("未设置");
@@ -242,13 +250,15 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("用户不存在");
         }
 
-        // 验证旧密码
-        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+        // 验证旧密码 - 使用明文比较
+        // if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+        if (!oldPassword.equals(user.getPasswordHash())) {
             throw new BusinessException("旧密码不正确");
         }
 
-        // 更新密码
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // 更新密码 - 使用明文存储
+        // user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setPasswordHash(newPassword);
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
 
@@ -340,61 +350,37 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean verifySecurityAnswer(String username, String securityAnswer) {
-        log.info("验证用户密保答案: {}", username);
-
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, username));
-
         if (user == null) {
-            log.warn("用户不存在: {}", username);
             throw new BusinessException("用户不存在");
         }
 
-        if (user.getSecurityQuestion() == null || user.getSecurityQuestion().isEmpty() ||
-                user.getSecurityAnswerHash() == null || user.getSecurityAnswerHash().isEmpty()) {
-            log.warn("用户未设置密保问题或密保答案: {}", username);
-            throw new BusinessException("用户未设置密保问题或密保答案，请联系管理员");
-        }
-
-        // 验证密保答案
-        boolean matches = passwordEncoder.matches(securityAnswer, user.getSecurityAnswerHash());
-
-        if (!matches) {
-            log.warn("密保答案验证失败: {}", username);
-            throw new BusinessException("密保答案不正确");
-        }
-
-        return true;
+        // 直接比较明文密保答案，不再使用哈希比较
+        // return passwordEncoder.matches(securityAnswer, user.getSecurityAnswerHash());
+        return securityAnswer.equals(user.getSecurityAnswerHash());
     }
 
     @Override
     @Transactional
     public boolean resetPassword(String username, String securityAnswer, String newPassword) {
-        log.info("重置用户密码: {}", username);
-
-        // 先验证密保答案
-        try {
-            verifySecurityAnswer(username, securityAnswer);
-        } catch (BusinessException e) {
-            log.warn("重置密码失败，密保答案验证失败: {}", username);
-            throw e;
-        }
-
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, username));
-
-        // 更新密码
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
-        user.setUpdatedAt(LocalDateTime.now());
-
-        int rows = userMapper.updateById(user);
-
-        if (rows <= 0) {
-            log.error("重置密码更新数据库失败: {}", username);
-            throw new BusinessException("重置密码失败，请稍后重试");
+        if (user == null) {
+            throw new BusinessException("用户不存在");
         }
 
-        log.info("用户密码重置成功: {}", username);
+        // 验证密保答案 - 使用明文比较
+        // if (!passwordEncoder.matches(securityAnswer, user.getSecurityAnswerHash())) {
+        if (!securityAnswer.equals(user.getSecurityAnswerHash())) {
+            throw new BusinessException("密保答案错误");
+        }
+
+        // 设置新密码 - 使用明文存储
+        // user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setPasswordHash(newPassword);
+        userMapper.updateById(user);
+
         return true;
     }
 }

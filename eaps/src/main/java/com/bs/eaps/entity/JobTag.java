@@ -1,6 +1,7 @@
 package com.bs.eaps.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -33,22 +34,8 @@ public class JobTag implements Serializable {
     private String name;
 
     /**
-     * 标签描述
-     */
-    private String description;
-
-    /**
-     * 标签状态 (0-禁用, 1-启用)
-     */
-    private Integer status;
-
-    /**
      * 创建时间
      */
-    private LocalDateTime createTime;
-
-    /**
-     * 更新时间
-     */
-    private LocalDateTime updateTime;
+    @TableField("created_at")
+    private LocalDateTime createdAt;
 }

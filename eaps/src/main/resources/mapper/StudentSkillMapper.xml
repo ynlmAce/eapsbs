@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bs.eaps.mapper.StudentSkillMapper">
+    
+    <!-- 批量插入学生技能关联记录 -->
+    <insert id="batchInsert">
+        INSERT INTO student_skill (student_profile_id, skill_tag_id) 
+        VALUES 
+        <foreach collection="skillTagIds" item="skillTagId" separator=",">
+            (#{studentProfileId}, #{skillTagId})
+        </foreach>
+        ON DUPLICATE KEY UPDATE student_profile_id = VALUES(student_profile_id)
+    </insert>
+    
+    <!-- 删除学生的所有技能关联记录 -->
+    <delete id="deleteByStudentId">
+        DELETE FROM student_skill 
+        WHERE student_profile_id = #{studentProfileId}
+    </delete>
+    
+</mapper> 

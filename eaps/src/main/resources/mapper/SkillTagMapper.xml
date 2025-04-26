@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bs.eaps.mapper.SkillTagMapper">
+    
+    <!-- 获取或创建技能标签 -->
+    <select id="getOrCreateByName" resultType="java.lang.Long">
+        INSERT IGNORE INTO skill_tag (name) VALUES (#{name});
+        SELECT id FROM skill_tag WHERE name = #{name} LIMIT 1
+    </select>
+    
+    <!-- 获取学生的所有技能标签名称 -->
+    <select id="getStudentSkillTags" resultType="java.lang.String">
+        SELECT t.name
+        FROM skill_tag t
+        JOIN student_skill s ON t.id = s.skill_tag_id
+        WHERE s.student_profile_id = #{studentProfileId}
+        ORDER BY t.name
+    </select>
+    
+</mapper> 

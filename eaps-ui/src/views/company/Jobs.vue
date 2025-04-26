@@ -135,8 +135,10 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { Location, Timer, Collection, Calendar, Search, User } from '@element-plus/icons-vue'
+import { getJobList, createJob, updateJob, deleteJob, refreshJob } from '@/api/job'
+import { callApi } from '@/utils/apiUtils'
 
 const router = useRouter()
 
@@ -161,13 +163,17 @@ const pageSize = ref(10)
 const getStatusText = (status) => {
   switch (status) {
     case 'recruiting':
+    case 'active':
       return '招聘中'
     case 'pending':
       return '待审核'
     case 'rejected':
       return '已驳回'
     case 'ended':
+    case 'closed':
       return '已结束'
+    case 'draft':
+      return '草稿'
     default:
       return '未知状态'
   }
@@ -177,13 +183,17 @@ const getStatusText = (status) => {
 const getStatusType = (status) => {
   switch (status) {
     case 'recruiting':
+    case 'active':
       return 'success'
     case 'pending':
       return 'warning'
     case 'rejected':
-      return 'danger'
+      return '已驳回'
     case 'ended':
+    case 'closed':
       return 'info'
+    case 'draft':
+      return ''
     default:
       return ''
   }
@@ -222,97 +232,49 @@ onMounted(() => {
 })
 
 // 获取岗位列表
-const fetchJobs = () => {
+const fetchJobs = async () => {
   loading.value = true
-  
-  // 模拟获取数据
-  setTimeout(() => {
-    const mockJobs = []
-    
-    // 生成随机岗位数据
-    for (let i = 1; i <= 30; i++) {
-      const statuses = ['recruiting', 'pending', 'rejected', 'ended']
-      const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
-      mockJobs.push({
-        id: i,
-        title: '软件工程师' + i,
-        salary: ['3k-5k', '5k-7k', '7k-10k', '10k-15k', '15k-20k'][Math.floor(Math.random() * 5)],
-        location: ['北京', '上海', '广州', '深圳', '杭州'][Math.floor(Math.random() * 5)],
-        education: ['大专', '本科', '硕士', '博士'][Math.floor(Math.random() * 4)],
-        experience: ['经验不限', '1-3年', '3-5年', '5年以上'][Math.floor(Math.random() * 4)],
-        recruitCount: Math.floor(Math.random() * 10) + 1,
-        publishTime: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
-        status,
-        viewCount: Math.floor(Math.random() * 1000),
-        applicationCount: Math.floor(Math.random() * 100),
-        interviewCount: Math.floor(Math.random() * 20),
-        rejectionReason: status === 'rejected' ? '岗位描述不够详细，请补充岗位职责和要求' : ''
-      })
+  try {
+    const params = {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: searchKeyword.value,
+      status: activeTab.value === 'all' ? '' : activeTab.value
     }
     
-    // 统计各状态数量
-    statusCounts.recruiting = mockJobs.filter(job => job.status === 'recruiting').length
-    statusCounts.pending = mockJobs.filter(job => job.status === 'pending').length
-    statusCounts.rejected = mockJobs.filter(job => job.status === 'rejected').length
-    statusCounts.ended = mockJobs.filter(job => job.status === 'ended').length
+    const result = await callApi(getJobList(params))
     
-    // 根据标签筛选
-    let filteredJobs = [...mockJobs]
+    jobs.value = result.list || []
+    total.value = result.total || 0
     
-    if (activeTab.value !== 'all') {
-      filteredJobs = filteredJobs.filter(job => job.status === activeTab.value)
-    }
-    
-    // 根据关键词搜索
-    if (searchKeyword.value) {
-      const keyword = searchKeyword.value.toLowerCase()
-      filteredJobs = filteredJobs.filter(job => job.title.toLowerCase().includes(keyword))
-    }
-    
-    total.value = filteredJobs.length
-    
-    // 分页
-    const start = (currentPage.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    jobs.value = filteredJobs.slice(start, end)
-    
+    // 更新计数
+    statusCounts.recruiting = result.statusCounts?.recruiting || 0
+    statusCounts.pending = result.statusCounts?.pending || 0
+    statusCounts.rejected = result.statusCounts?.rejected || 0
+    statusCounts.ended = result.statusCounts?.ended || 0
+  } catch (error) {
+    // callApi已处理错误提示
+    console.error('获取岗位列表失败:', error)
+    jobs.value = []
+    total.value = 0
+  } finally {
     loading.value = false
-  }, 1000)
-
-  /**
-   * TODO: 实际实现时从API获取岗位列表
-   * const fetchJobList = async () => {
-   *   try {
-   *     loading.value = true
-   *     const res = await api.company.jobs.list({
-   *       status: activeTab.value !== 'all' ? activeTab.value : null,
-   *       keyword: searchKeyword.value,
-   *       page: currentPage.value,
-   *       pageSize: pageSize.value
-   *     })
-   *     if (res.success) {
-   *       jobs.value = res.data.list
-   *       total.value = res.data.total
-   *       
-   *       // 更新各状态数量
-   *       statusCounts.recruiting = res.data.counts.recruiting || 0
-   *       statusCounts.pending = res.data.counts.pending || 0
-   *       statusCounts.rejected = res.data.counts.rejected || 0
-   *       statusCounts.ended = res.data.counts.ended || 0
-   *     }
-   *   } catch (error) {
-   *     console.error('获取岗位列表失败:', error)
-   *     ElMessage.error('获取岗位列表失败，请刷新重试')
-   *   } finally {
-   *     loading.value = false
-   *   }
-   * }
-   * fetchJobList()
-   */
+  }
 }
 
-// 处理每页展示数量变化
+// 处理搜索
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchJobs()
+}
+
+// 处理标签切换
+const handleTabChange = () => {
+  currentPage.value = 1
+  fetchJobs()
+}
+
+// 处理分页大小变化
 const handleSizeChange = (val) => {
   pageSize.value = val
   fetchJobs()
@@ -324,234 +286,157 @@ const handleCurrentChange = (val) => {
   fetchJobs()
 }
 
-// 处理标签切换
-const handleTabChange = () => {
-  currentPage.value = 1
-  fetchJobs()
-}
-
-// 处理搜索
-const handleSearch = () => {
-  currentPage.value = 1
-  fetchJobs()
-}
-
-// 创建新岗位
-const handleCreateJob = () => {
-  ElMessage.success('跳转到岗位创建页面')
-  // TODO: 跳转到岗位创建页面或打开创建对话框
-}
-
-// 编辑岗位
-const handleEdit = (job) => {
-  ElMessage.success(`编辑岗位: ${job.title}`)
-  // TODO: 跳转到岗位编辑页面或打开编辑对话框
-}
-
-// 删除岗位
-const handleDelete = (job) => {
-  ElMessageBox.confirm(`确定要删除岗位"${job.title}"吗？此操作不可逆。`, '删除确认', {
-    confirmButtonText: '确定删除',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
-    // 模拟删除成功
-    ElMessage.success('岗位删除成功')
-    
-    // 从列表中移除
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value.splice(index, 1)
-    }
-    
-    // 更新各状态数量
-    statusCounts[job.status]--
-    
-    /**
-     * TODO: 实际实现时调用API删除岗位
-     * const deleteJob = async () => {
-     *   try {
-     *     const res = await api.company.jobs.delete(job.id)
-     *     if (res.success) {
-     *       ElMessage.success('岗位删除成功')
-     *       
-     *       // 重新获取岗位列表
-     *       fetchJobs()
-     *     } else {
-     *       ElMessage.error(res.message || '删除失败')
-     *     }
-     *   } catch (error) {
-     *     console.error('删除岗位失败:', error)
-     *     ElMessage.error('系统错误，请稍后重试')
-     *   }
-     * }
-     * deleteJob()
-     */
-  }).catch(() => {})
-}
-
-// 刷新岗位
-const handleRefresh = (job) => {
-  ElMessageBox.confirm('刷新后，岗位将会在列表中排名靠前。确定要刷新吗？', '刷新确认', {
-    confirmButtonText: '确定刷新',
-    cancelButtonText: '取消',
-    type: 'info'
-  }).then(() => {
-    // 模拟刷新成功
-    ElMessage.success('岗位刷新成功')
-    
-    // 更新发布时间
-    job.publishTime = new Date()
-    
-    /**
-     * TODO: 实际实现时调用API刷新岗位
-     * const refreshJob = async () => {
-     *   try {
-     *     const res = await api.company.jobs.refresh(job.id)
-     *     if (res.success) {
-     *       ElMessage.success('岗位刷新成功')
-     *       
-     *       // 更新发布时间
-     *       job.publishTime = new Date()
-     *     } else {
-     *       ElMessage.error(res.message || '刷新失败')
-     *     }
-     *   } catch (error) {
-     *     console.error('刷新岗位失败:', error)
-     *     ElMessage.error('系统错误，请稍后重试')
-     *   }
-     * }
-     * refreshJob()
-     */
-  }).catch(() => {})
-}
-
-// 结束招聘
-const handleEnd = (job) => {
-  ElMessageBox.confirm('结束招聘后，该岗位将不再显示在学生端。确定要结束吗？', '结束确认', {
-    confirmButtonText: '确定结束',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
-    // 模拟结束成功
-    ElMessage.success('已结束招聘')
-    
-    // 更新状态
-    job.status = 'ended'
-    
-    // 更新各状态数量
-    statusCounts.recruiting--
-    statusCounts.ended++
-    
-    /**
-     * TODO: 实际实现时调用API结束招聘
-     * const endJob = async () => {
-     *   try {
-     *     const res = await api.company.jobs.end(job.id)
-     *     if (res.success) {
-     *       ElMessage.success('已结束招聘')
-     *       
-     *       // 重新获取岗位列表
-     *       fetchJobs()
-     *     } else {
-     *       ElMessage.error(res.message || '操作失败')
-     *     }
-     *   } catch (error) {
-     *     console.error('结束招聘失败:', error)
-     *     ElMessage.error('系统错误，请稍后重试')
-     *   }
-     * }
-     * endJob()
-     */
-  }).catch(() => {})
-}
-
-// 重新提交被驳回的岗位
-const handleResubmit = (job) => {
-  ElMessageBox.confirm('重新提交后，岗位将进入待审核状态。确定要重新提交吗？', '提交确认', {
-    confirmButtonText: '确定提交',
-    cancelButtonText: '取消',
-    type: 'info'
-  }).then(() => {
-    // 模拟提交成功
-    ElMessage.success('岗位已重新提交，等待审核')
-    
-    // 更新状态
-    job.status = 'pending'
-    
-    // 更新各状态数量
-    statusCounts.rejected--
-    statusCounts.pending++
-    
-    /**
-     * TODO: 实际实现时调用API重新提交岗位
-     * const resubmitJob = async () => {
-     *   try {
-     *     const res = await api.company.jobs.resubmit(job.id)
-     *     if (res.success) {
-     *       ElMessage.success('岗位已重新提交，等待审核')
-     *       
-     *       // 重新获取岗位列表
-     *       fetchJobs()
-     *     } else {
-     *       ElMessage.error(res.message || '提交失败')
-     *     }
-     *   } catch (error) {
-     *     console.error('重新提交岗位失败:', error)
-     *     ElMessage.error('系统错误，请稍后重试')
-     *   }
-     * }
-     * resubmitJob()
-     */
-  }).catch(() => {})
-}
-
-// 重新开放已结束的岗位
-const handleReopen = (job) => {
-  ElMessageBox.confirm('重新开放后，岗位将进入待审核状态。确定要重新开放吗？', '开放确认', {
-    confirmButtonText: '确定开放',
-    cancelButtonText: '取消',
-    type: 'info'
-  }).then(() => {
-    // 模拟开放成功
-    ElMessage.success('岗位已重新开放，等待审核')
-    
-    // 更新状态
-    job.status = 'pending'
-    
-    // 更新各状态数量
-    statusCounts.ended--
-    statusCounts.pending++
-    
-    /**
-     * TODO: 实际实现时调用API重新开放岗位
-     * const reopenJob = async () => {
-     *   try {
-     *     const res = await api.company.jobs.reopen(job.id)
-     *     if (res.success) {
-     *       ElMessage.success('岗位已重新开放，等待审核')
-     *       
-     *       // 重新获取岗位列表
-     *       fetchJobs()
-     *     } else {
-     *       ElMessage.error(res.message || '开放失败')
-     *     }
-     *   } catch (error) {
-     *     console.error('重新开放岗位失败:', error)
-     *     ElMessage.error('系统错误，请稍后重试')
-     *   }
-     * }
-     * reopenJob()
-     */
-  }).catch(() => {})
-}
-
 // 查看申请
 const viewApplications = (job) => {
   router.push({
     path: '/company/applications',
     query: { jobId: job.id }
   })
+}
+
+// 处理创建岗位
+const handleCreateJob = () => {
+  router.push('/company/job/create')
+}
+
+// 处理编辑岗位
+const handleEdit = (job) => {
+  router.push(`/company/job/edit/${job.id}`)
+}
+
+// 处理刷新岗位
+const handleRefresh = async (job) => {
+  try {
+    await ElMessageBox.confirm('确定要刷新此岗位吗？刷新后岗位将会排在前面', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    const loading = ElLoading.service({
+      lock: true,
+      text: '刷新中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    await callApi(refreshJob(job.id), {
+      showSuccess: true,
+      successMsg: '岗位刷新成功'
+    })
+    
+    fetchJobs()
+    loading.close()
+  } catch (error) {
+    if (error !== 'cancel') {
+      // callApi已处理错误提示
+      console.error('岗位刷新失败:', error)
+    }
+  }
+}
+
+// 处理结束招聘
+const handleEnd = async (job) => {
+  try {
+    await ElMessageBox.confirm('确定要结束此岗位的招聘吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    const loading = ElLoading.service({
+      lock: true,
+      text: '处理中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    await callApi(updateJob({
+      jobId: job.id,
+      status: 'ended'
+    }), {
+      showSuccess: true, 
+      successMsg: '已结束岗位招聘'
+    })
+    
+    fetchJobs()
+    loading.close()
+  } catch (error) {
+    if (error !== 'cancel') {
+      // callApi已处理错误提示
+      console.error('结束岗位招聘失败:', error)
+    }
+  }
+}
+
+// 处理重新提交
+const handleResubmit = async (job) => {
+  router.push(`/company/job/edit/${job.id}?resubmit=true`)
+}
+
+// 处理重新开放
+const handleReopen = async (job) => {
+  try {
+    await ElMessageBox.confirm('确定要重新开放此岗位吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    const loading = ElLoading.service({
+      lock: true,
+      text: '处理中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    await callApi(updateJob({
+      jobId: job.id,
+      status: 'pending' // 重新开放需要重新审核
+    }), {
+      showSuccess: true,
+      successMsg: '岗位已提交重新审核'
+    })
+    
+    fetchJobs()
+    loading.close()
+  } catch (error) {
+    if (error !== 'cancel') {
+      // callApi已处理错误提示
+      console.error('重新开放岗位失败:', error)
+    }
+  }
+}
+
+// 处理删除岗位
+const handleDelete = async (job) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除此岗位吗？删除后将无法恢复，相关申请记录也将被删除',
+      '警告',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'danger'
+      }
+    )
+    
+    const loading = ElLoading.service({
+      lock: true,
+      text: '删除中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    await callApi(deleteJob(job.id), {
+      showSuccess: true,
+      successMsg: '岗位删除成功'
+    })
+    
+    fetchJobs()
+    loading.close()
+  } catch (error) {
+    if (error !== 'cancel') {
+      // callApi已处理错误提示
+      console.error('删除岗位失败:', error)
+    }
+  }
 }
 </script>
 

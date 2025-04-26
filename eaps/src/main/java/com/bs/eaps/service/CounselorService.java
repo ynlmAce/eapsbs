@@ -5,6 +5,7 @@ import com.bs.eaps.dto.counselor.TaskDTO;
 import com.bs.eaps.dto.counselor.TaskProcessDTO;
 import com.bs.eaps.dto.counselor.TaskProcessResultDTO;
 import com.bs.eaps.dto.counselor.OperationHistoryDTO;
+import com.bs.eaps.dto.counselor.CounselorProfileDTO;
 import com.bs.eaps.dto.common.PageRequestDTO;
 import com.bs.eaps.dto.common.PageResultDTO;
 
@@ -50,4 +51,19 @@ public interface CounselorService {
      */
     PageResultDTO<OperationHistoryDTO> getOperationsHistory(LocalDate startDate, LocalDate endDate,
             String type, PageRequestDTO pageRequest);
+
+    /**
+     * 获取辅导员个人资料
+     * 
+     * @return 辅导员个人资料
+     */
+    CounselorProfileDTO getCounselorProfile();
+
+    /**
+     * 更新辅导员个人资料
+     * 
+     * @param profileDTO 辅导员个人资料
+     * @return 是否更新成功
+     */
+    boolean updateCounselorProfile(CounselorProfileDTO profileDTO);
 }

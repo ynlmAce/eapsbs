@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bs.eaps.mapper.StudentStructuredResumeMapper">
+    
+    <!-- 根据学生ID和简历部分类型删除简历数据 -->
+    <delete id="deleteByStudentIdAndType">
+        DELETE FROM student_structured_resume
+        WHERE student_profile_id = #{studentProfileId}
+        AND section_type = #{sectionType}
+    </delete>
+    
+</mapper> 

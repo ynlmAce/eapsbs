@@ -49,6 +49,54 @@ public class CounselorProfile implements Serializable {
     private String contact;
 
     /**
+     * 电子邮箱
+     */
+    @TableField("email")
+    private String email;
+
+    /**
+     * 所属学院
+     */
+    @TableField("college")
+    private String college;
+
+    /**
+     * 职称
+     */
+    @TableField("title")
+    private String title;
+
+    /**
+     * 专业方向
+     */
+    @TableField("specialization")
+    private String specialization;
+
+    /**
+     * 带队经验(年)
+     */
+    @TableField("experience")
+    private Integer experience;
+
+    /**
+     * 办公室地点
+     */
+    @TableField("office_location")
+    private String officeLocation;
+
+    /**
+     * 办公时间
+     */
+    @TableField("office_hours")
+    private String officeHours;
+
+    /**
+     * 个人简介
+     */
+    @TableField("introduction")
+    private String introduction;
+
+    /**
      * 创建时间
      */
     @TableField("created_at")

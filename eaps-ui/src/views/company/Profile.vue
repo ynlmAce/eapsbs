@@ -14,12 +14,12 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="企业名称" prop="name">
-              <el-input v-model="form.name" placeholder="请输入企业全称"></el-input>
+              <el-input v-model="form.name" placeholder="请输入企业全称" readonly disabled></el-input>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="统一社会信用代码" prop="unifiedSocialCreditCode">
-              <el-input v-model="form.unifiedSocialCreditCode" placeholder="请输入统一社会信用代码"></el-input>
+              <el-input v-model="form.unifiedSocialCreditCode" placeholder="请输入统一社会信用代码" readonly disabled></el-input>
             </el-form-item>
           </el-col>
         </el-row>
@@ -168,6 +168,8 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElLoading } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { getCompanyProfile, updateCompanyProfile, uploadCompanyLogo, uploadCompanyLicense } from '@/api/company'
+import { callApi, callUploadApi } from '@/utils/apiUtils'
 
 // 表单引用
 const profileFormRef = ref(null)
@@ -198,12 +200,8 @@ const form = reactive({
 
 // 表单验证规则
 const rules = {
-  name: [{ required: true, message: '请输入企业名称', trigger: 'blur' }],
-  unifiedSocialCreditCode: [
-    { required: true, message: '请输入统一社会信用代码', trigger: 'blur' },
-    // 统一社会信用代码正则验证（简化版）
-    { pattern: /^[0-9A-HJ-NPQRTUWXY]{18}$/, message: '请输入正确的统一社会信用代码', trigger: 'blur' }
-  ],
+  name: [], // 不需要验证，因为这是只读字段
+  unifiedSocialCreditCode: [], // 不需要验证，因为这是只读字段
   industry: [{ required: true, message: '请选择行业', trigger: 'change' }],
   size: [{ required: true, message: '请选择企业规模', trigger: 'change' }],
   address: [{ required: true, message: '请输入公司地址', trigger: 'blur' }],
@@ -230,6 +228,8 @@ const getStatusText = computed(() => {
       return '已认证'
     case 'rejected':
       return '认证被驳回'
+    case 'expired':
+      return '认证已过期'
     default:
       return '未知状态'
   }
@@ -246,88 +246,133 @@ const getStatusType = computed(() => {
       return 'success'
     case 'rejected':
       return 'danger'
+    case 'expired':
+      return 'danger'
     default:
       return 'info'
   }
 })
 
-// 格式化日期
-const formatDate = (date) => {
-  if (!date) return ''
-  const d = new Date(date)
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
-}
-
-// 检查认证是否即将到期（30天内）
+// 认证有效期是否临近（30天内）
 const isExpiryDateNear = computed(() => {
   if (!form.certificationExpiryDate) return false
+  
   const expiryDate = new Date(form.certificationExpiryDate)
   const now = new Date()
-  const diffDays = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))
+  const diffTime = expiryDate - now
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
   return diffDays > 0 && diffDays <= 30
 })
 
-// 在组件挂载时获取企业档案信息
-onMounted(() => {
-  // 模拟从服务器获取数据
-  setTimeout(() => {
-    form.name = '示例科技有限公司'
-    form.unifiedSocialCreditCode = '91110000123456789X'
-    form.industry = 'IT/互联网/通信'
-    form.size = '200-500人'
-    form.address = '北京市海淀区中关村科技园区'
-    form.description = '示例科技是一家致力于人工智能技术研发的高新技术企业，成立于2015年，主要产品包括...'
-    form.hrContact = {
-      name: '李小姐',
-      phone: '13900139000',
-      email: 'hr@example.com',
-      workTime: '周一至周五 9:00-18:00'
-    }
-    form.logoUrl = 'https://example.com/logo.png' // 示例URL，实际项目中应替换
-    form.certificationStatus = 'approved'
-    form.certificationExpiryDate = '2024-12-31'
+// 格式化日期
+const formatDate = (dateString) => {
+  if (!dateString) return '未设置'
+  
+  const date = new Date(dateString)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// 页面加载时获取数据
+onMounted(async () => {
+  const loading = ElLoading.service({
+    lock: true,
+    text: '加载数据中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+  
+  try {
+    const profileData = await callApi(getCompanyProfile())
     
-    // 如果有营业执照，添加到文件列表
-    if (form.licenseUrl) {
+    // 填充表单数据
+    form.name = profileData.name || ''
+    form.unifiedSocialCreditCode = profileData.unifiedSocialCreditCode || ''
+    form.industry = profileData.industry || ''
+    form.size = profileData.size || ''
+    form.address = profileData.address || ''
+    form.description = profileData.description || ''
+    
+    // 解析HR联系方式
+    try {
+      form.hrContact = profileData.hrContact && typeof profileData.hrContact === 'object'
+        ? profileData.hrContact
+        : { name: '', phone: '', email: '', workTime: '' }
+    } catch (e) {
+      console.error('解析HR联系方式失败:', e)
+      form.hrContact = { name: '', phone: '', email: '', workTime: '' }
+    }
+    
+    // 设置Logo和营业执照
+    form.logoUrl = profileData.logoPath || ''
+    form.licenseUrl = profileData.licenseFilePath || ''
+    
+    // 设置认证状态
+    form.certificationStatus = profileData.certificationStatus || 'uncertified'
+    form.certificationExpiryDate = profileData.certificationExpiryDate || null
+    form.rejectionReason = profileData.rejectionReason || ''
+    
+    // 如果有营业执照文件，添加到文件列表
+    if (profileData.licenseFilePath) {
       licenseFileList.value = [{
-        name: '营业执照.pdf',
-        url: form.licenseUrl
+        name: profileData.licenseFileName || '营业执照',
+        url: profileData.licenseFilePath
       }]
     }
-  }, 1000)
-
-  /**
-   * TODO: 实际实现时调用API获取企业档案信息
-   * const fetchCompanyProfile = async () => {
-   *   const res = await api.company.getProfile()
-   *   if (res.success) {
-   *     Object.assign(form, res.data)
-   *     
-   *     // 如果有营业执照，添加到文件列表
-   *     if (form.licenseUrl) {
-   *       licenseFileList.value = [{
-   *         name: '营业执照.pdf',
-   *         url: form.licenseUrl
-   *       }]
-   *     }
-   *   }
-   * }
-   * fetchCompanyProfile()
-   */
+  } catch (error) {
+    // callApi 已处理错误消息，这里可以记录日志
+    console.error('获取企业信息失败:', error)
+  } finally {
+    loading.close()
+  }
 })
 
-// Logo上传前验证
+// 保存企业信息
+const saveProfile = async () => {
+  try {
+    const valid = await profileFormRef.value.validate()
+    if (!valid) return
+    
+    const loading = ElLoading.service({
+      lock: true,
+      text: '保存数据中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    // 构建要保存的数据
+    const profileData = {
+      // 不包含企业名称和统一社会信用代码，因为它们是只读的
+      industry: form.industry,
+      size: form.size,
+      address: form.address,
+      description: form.description,
+      hrContact: form.hrContact
+    }
+    
+    await callApi(updateCompanyProfile(profileData), {
+      showSuccess: true,
+      successMsg: '企业信息保存成功'
+    })
+    
+    loading.close()
+  } catch (error) {
+    // callApi 已处理错误消息
+    console.error('保存企业信息失败:', error)
+  }
+}
+
+// 上传Logo前的验证
 const beforeLogoUpload = (file) => {
-  const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
+  const isJPG = file.type === 'image/jpeg'
+  const isPNG = file.type === 'image/png'
   const isLt2M = file.size / 1024 / 1024 < 2
-  
-  if (!isImage) {
-    ElMessage.error('企业Logo只能是JPG或PNG格式!')
+
+  if (!isJPG && !isPNG) {
+    ElMessage.error('Logo只能是JPG或PNG格式!')
     return false
   }
   
   if (!isLt2M) {
-    ElMessage.error('企业Logo大小不能超过2MB!')
+    ElMessage.error('Logo大小不能超过2MB!')
     return false
   }
   
@@ -335,44 +380,34 @@ const beforeLogoUpload = (file) => {
 }
 
 // 上传Logo
-const uploadLogo = (options) => {
-  const { file } = options
-  
-  // 创建临时URL用于预览
-  form.logoUrl = URL.createObjectURL(file)
-  
-  /**
-   * TODO: 实际实现时上传文件到服务器
-   * const formData = new FormData()
-   * formData.append('file', file)
-   * 
-   * const uploadLogoFile = async () => {
-   *   try {
-   *     const res = await api.upload.logo(formData)
-   *     if (res.success) {
-   *       form.logoUrl = res.data.url
-   *       ElMessage.success('Logo上传成功')
-   *     } else {
-   *       ElMessage.error(res.message || 'Logo上传失败')
-   *     }
-   *   } catch (error) {
-   *     console.error('上传Logo失败:', error)
-   *     ElMessage.error('系统错误，请稍后重试')
-   *   }
-   * }
-   * uploadLogoFile()
-   */
-  
-  // 模拟上传成功
-  ElMessage.success('Logo上传成功')
+const uploadLogo = async (params) => {
+  try {
+    const loading = ElLoading.service({
+      lock: true,
+      text: '上传Logo中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    const response = await callUploadApi(uploadCompanyLogo(params.file), {
+      successMsg: 'Logo上传成功'
+    })
+    
+    form.logoUrl = response.filePath
+    loading.close()
+  } catch (error) {
+    // callUploadApi 已处理错误消息
+    console.error('Logo上传失败:', error)
+  }
 }
 
-// 营业执照上传前验证
+// 上传营业执照前的验证
 const beforeLicenseUpload = (file) => {
-  const isValidType = file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'application/pdf'
+  const isJPG = file.type === 'image/jpeg'
+  const isPNG = file.type === 'image/png'
+  const isPDF = file.type === 'application/pdf'
   const isLt10M = file.size / 1024 / 1024 < 10
-  
-  if (!isValidType) {
+
+  if (!isJPG && !isPNG && !isPDF) {
     ElMessage.error('营业执照只能是JPG、PNG或PDF格式!')
     return false
   }
@@ -386,109 +421,39 @@ const beforeLicenseUpload = (file) => {
 }
 
 // 上传营业执照
-const uploadLicense = (options) => {
-  const { file } = options
-  
-  // 更新文件列表
-  licenseFileList.value = [{
-    name: file.name,
-    url: URL.createObjectURL(file)
-  }]
-  
-  /**
-   * TODO: 实际实现时上传文件到服务器
-   * const formData = new FormData()
-   * formData.append('file', file)
-   * 
-   * const uploadLicenseFile = async () => {
-   *   try {
-   *     const res = await api.upload.license(formData)
-   *     if (res.success) {
-   *       form.licenseUrl = res.data.url
-   *       // 重置认证状态为待审核
-   *       form.certificationStatus = 'pending'
-   *       ElMessage.success('营业执照上传成功，企业资质将进入审核流程')
-   *     } else {
-   *       ElMessage.error(res.message || '营业执照上传失败')
-   *     }
-   *   } catch (error) {
-   *     console.error('上传营业执照失败:', error)
-   *     ElMessage.error('系统错误，请稍后重试')
-   *   }
-   * }
-   * uploadLicenseFile()
-   */
-  
-  // 模拟上传成功
-  form.licenseUrl = URL.createObjectURL(file)
-  // 重置认证状态为待审核
-  form.certificationStatus = 'pending'
-  ElMessage.success('营业执照上传成功，企业资质将进入审核流程')
-}
-
-// 处理超出文件数量限制
-const handleExceed = () => {
-  ElMessage.warning('最多只能上传1个营业执照文件')
-}
-
-// 保存企业信息
-const saveProfile = async () => {
-  const valid = await profileFormRef.value.validate().catch(() => false)
-  if (!valid) {
-    ElMessage.error('表单填写有误，请检查')
-    return
-  }
-  
-  // 信息变更可能触发重新认证
-  const needReauth = form.certificationStatus === 'rejected' || form.certificationStatus === 'uncertified'
-  
-  // 模拟API调用保存信息
-  const loading = ElLoading.service({
-    lock: true,
-    text: '保存中...',
-    background: 'rgba(0, 0, 0, 0.7)'
-  })
-  
-  setTimeout(() => {
+const uploadLicense = async (params) => {
+  try {
+    const loading = ElLoading.service({
+      lock: true,
+      text: '上传营业执照中...',
+      background: 'rgba(255, 255, 255, 0.7)'
+    })
+    
+    const response = await callUploadApi(uploadCompanyLicense(params.file), {
+      successMsg: '营业执照上传成功，认证状态已更新为待审核'
+    })
+    
+    form.licenseUrl = response.filePath
+    
+    // 更新文件列表
+    licenseFileList.value = [{
+      name: response.fileName || params.file.name,
+      url: response.filePath
+    }]
+    
+    // 更新认证状态
+    form.certificationStatus = 'pending'
+    
     loading.close()
-    if (needReauth && form.licenseUrl) {
-      // 如果需要重新认证并且已上传营业执照
-      form.certificationStatus = 'pending'
-      ElMessage.success('企业信息保存成功，资质将进入审核流程')
-    } else {
-      ElMessage.success('企业信息保存成功')
-    }
-  }, 1500)
+  } catch (error) {
+    // callUploadApi 已处理错误消息
+    console.error('营业执照上传失败:', error)
+  }
+}
 
-  /**
-   * TODO: 实际实现时调用API保存企业档案信息
-   * try {
-   *   const loading = ElLoading.service({
-   *     lock: true,
-   *     text: '保存中...',
-   *     background: 'rgba(0, 0, 0, 0.7)'
-   *   })
-   *   
-   *   const res = await api.company.saveProfile(form)
-   *   loading.close()
-   *   
-   *   if (res.success) {
-   *     if (needReauth && form.licenseUrl) {
-   *       // 如果需要重新认证并且已上传营业执照
-   *       form.certificationStatus = 'pending'
-   *       ElMessage.success('企业信息保存成功，资质将进入审核流程')
-   *     } else {
-   *       ElMessage.success('企业信息保存成功')
-   *     }
-   *   } else {
-   *     ElMessage.error(res.message || '保存失败')
-   *   }
-   * } catch (error) {
-   *   loading.close()
-   *   console.error('保存企业信息失败:', error)
-   *   ElMessage.error('系统错误，请稍后重试')
-   * }
-   */
+// 处理文件数量超出限制
+const handleExceed = () => {
+  ElMessage.warning('只能上传一个营业执照文件，请先删除当前文件')
 }
 </script>
 

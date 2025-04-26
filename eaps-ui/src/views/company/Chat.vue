@@ -106,58 +106,66 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
+import { ElMessage, ElLoading } from 'element-plus'
+import { getChatSessions, getChatMessages, sendChatMessage, uploadChatFile } from '@/api/chat'
+import { callApi, callUploadApi } from '@/utils/apiUtils'
 
-// 模拟数据 - 实际项目中应从API获取
+const route = useRoute()
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
-const sessions = ref([
-  {
-    id: '1',
-    name: '张三',
-    avatar: '',
-    lastMessage: '您好，请问有什么可以帮助您的？',
-    lastTime: '上午 10:30',
-    unread: 2,
-    type: 'student', // 用户类型：student, company, counselor
-    relatedJobId: '101' // 如果是与企业的会话，可能关联一个岗位
-  },
-  {
-    id: '2',
-    name: '李四',
-    avatar: '',
-    lastMessage: '谢谢，我会考虑的',
-    lastTime: '昨天',
-    unread: 0,
-    type: 'student'
-  }
-])
-
+const sessions = ref([])
 const currentSession = ref(null)
 const messages = ref([])
 const messageText = ref('')
 const messageList = ref(null)
 const imageInput = ref(null)
 const fileInput = ref(null)
+const loading = ref(false)
+const loadingMessages = ref(false)
+const sendingMessage = ref(false)
+const currentSessionId = ref(null)
+
+// 从URL参数中获取会话ID
+watch(() => route.query.sessionId, (sessionId) => {
+  if (sessionId) {
+    currentSessionId.value = sessionId
+    // 如果已经加载了会话列表，选择对应会话
+    if (sessions.value.length > 0) {
+      const session = sessions.value.find(s => s.id === sessionId)
+      if (session) {
+        selectSession(session)
+      }
+    }
+  }
+}, { immediate: true })
 
 // 当前会话的附加信息
 const currentSessionInfo = computed(() => {
   if (!currentSession.value) return ''
   
-  if (currentSession.value.type === 'student') {
-    return `学生`
-  } else if (currentSession.value.type === 'company') {
-    return `企业 - 岗位: ${currentSession.value.jobTitle || '未指定'}`
+  if (currentSession.value.type === 'SE') {
+    return `学生-企业会话${currentSession.value.relatedJobTitle ? ` - 岗位: ${currentSession.value.relatedJobTitle}` : ''}`
+  } else if (currentSession.value.type === 'SC') {
+    return `学生-辅导员会话`
+  } else if (currentSession.value.type === 'SS') {
+    return `学生群组`
   } else {
-    return `辅导员`
+    return ''
   }
 })
 
 // 选择会话
-const selectSession = (session) => {
-  currentSession.value = session
+const selectSession = async (session) => {
+  if (loadingMessages.value) return
   
-  // 模拟加载消息
-  loadSessionMessages(session.id)
+  // 如果是同一个会话，则不重新加载
+  if (currentSession.value && currentSession.value.id === session.id) return
+  
+  currentSession.value = session
+  messages.value = []
+  
+  // 加载会话消息
+  await loadSessionMessages(session.id)
   
   // 清除未读计数
   const sessionIndex = sessions.value.findIndex(s => s.id === session.id)
@@ -166,101 +174,134 @@ const selectSession = (session) => {
   }
 }
 
-// 加载会话消息
-const loadSessionMessages = (sessionId) => {
-  // 实际项目中应从API获取
-  messages.value = [
-    {
-      id: '101',
-      sessionId: sessionId,
-      senderId: 'self',
-      isSelf: true,
-      content: '您好，我对贵公司的岗位很感兴趣',
-      type: 'text',
-      time: '10:25',
-      avatar: ''
-    },
-    {
-      id: '102',
-      sessionId: sessionId,
-      senderId: 'other',
-      isSelf: false,
-      content: '您好，请问有什么可以帮助您的？',
-      type: 'text',
-      time: '10:30',
-      avatar: ''
-    }
-  ]
+// 加载会话列表
+const loadSessions = async () => {
+  loading.value = true
   
-  // 滚动到底部
-  scrollToBottom()
+  try {
+    const result = await callApi(getChatSessions())
+    
+    // 处理会话数据
+    sessions.value = (result.list || []).map(session => ({
+      id: session.id,
+      name: session.title,
+      avatar: session.participantInfo?.avatar || '',
+      lastMessage: session.lastMessage?.content || '',
+      lastTime: formatSessionTime(session.lastActiveAt),
+      unread: session.unreadCount || 0,
+      type: session.type,
+      relatedJobId: session.relatedJobId,
+      relatedJobTitle: session.lastMessage?.content?.includes(":") ? session.lastMessage.content.split(":")[0] : ''
+    }))
+    
+    // 如果路由参数有会话ID，选择对应会话
+    if (currentSessionId.value) {
+      const session = sessions.value.find(s => s.id === currentSessionId.value)
+      if (session) {
+        selectSession(session)
+      }
+    }
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('加载会话列表失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 加载会话消息
+const loadSessionMessages = async (sessionId) => {
+  loadingMessages.value = true
+  
+  try {
+    const result = await callApi(getChatMessages({
+      sessionId,
+      page: 1,
+      pageSize: 50
+    }))
+    
+    // 处理消息数据
+    messages.value = (result.list || []).map(msg => ({
+      id: msg.id,
+      content: msg.content,
+      type: msg.contentType,
+      time: formatMessageTime(msg.sentAt),
+      isSelf: msg.isSelf,
+      avatar: msg.senderAvatar || defaultAvatar,
+      file: msg.contentType === 'file' ? {
+        name: getFileNameFromPath(msg.filePath),
+        path: msg.filePath,
+        size: msg.fileSize || 0
+      } : null
+    }))
+    
+    // 滚动到最新消息
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    // 错误已由callApi处理
+    console.error('加载消息失败:', error)
+  } finally {
+    loadingMessages.value = false
+  }
 }
 
 // 发送消息
-const sendMessage = () => {
-  if (!messageText.value.trim()) return
+const sendMessage = async () => {
+  if (!currentSession.value || !messageText.value.trim() || sendingMessage.value) return
   
-  if (!currentSession.value) {
-    ElMessage.warning('请先选择一个聊天对象')
-    return
-  }
-  
-  // 创建新消息
-  const newMessage = {
-    id: Date.now().toString(),
-    sessionId: currentSession.value.id,
-    senderId: 'self',
-    isSelf: true,
-    content: messageText.value,
-    type: 'text',
-    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-    avatar: ''
-  }
-  
-  // 添加到消息列表
-  messages.value.push(newMessage)
-  
-  // 更新会话最后消息
-  updateSessionLastMessage(currentSession.value.id, messageText.value)
-  
-  // 清空输入框
+  const text = messageText.value.trim()
   messageText.value = ''
+  sendingMessage.value = true
   
-  // 滚动到底部
+  // 先在界面上显示发送中的消息
+  const tempMessage = {
+    id: 'temp-' + Date.now(),
+    content: text,
+    type: 'text',
+    time: formatMessageTime(new Date()),
+    isSelf: true,
+    avatar: defaultAvatar,
+    sending: true
+  }
+  
+  messages.value.push(tempMessage)
+  await nextTick()
   scrollToBottom()
   
-  // 实际项目中应调用API发送消息
-  /**
-   * TODO: 实际实现时调用API发送消息
-   * try {
-   *   await api.chat.sendMessage({
-   *     sessionId: currentSession.value.id,
-   *     content: messageText.value,
-   *     type: 'text'
-   *   })
-   * } catch (error) {
-   *   console.error('发送消息失败:', error)
-   *   ElMessage.error('发送失败，请重试')
-   * }
-   */
-}
-
-// 更新会话最后消息
-const updateSessionLastMessage = (sessionId, message) => {
-  const sessionIndex = sessions.value.findIndex(s => s.id === sessionId)
-  if (sessionIndex !== -1) {
-    sessions.value[sessionIndex].lastMessage = message
-    sessions.value[sessionIndex].lastTime = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }
-}
-
-// 滚动到底部
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messageList.value) {
-      messageList.value.scrollTop = messageList.value.scrollHeight
+  try {
+    const result = await callApi(sendChatMessage({
+      sessionId: currentSession.value.id,
+      content: text,
+      contentType: 'text'
+    }))
+    
+    // 替换临时消息
+    const index = messages.value.findIndex(m => m.id === tempMessage.id)
+    if (index !== -1) {
+      messages.value[index] = {
+        id: result.messageId,
+        content: text,
+        type: 'text',
+        time: formatMessageTime(result.sentAt || new Date()),
+        isSelf: true,
+        avatar: defaultAvatar
+      }
     }
-  })
+    
+    // 更新会话列表中的最后一条消息
+    updateSessionLastMessage(currentSession.value.id, text)
+  } catch (error) {
+    // 错误已由callApi处理，标记消息发送失败
+    const index = messages.value.findIndex(m => m.id === tempMessage.id)
+    if (index !== -1) {
+      messages.value[index].failed = true
+      messages.value[index].sending = false
+    }
+    console.error('发送消息失败:', error)
+  } finally {
+    sendingMessage.value = false
+  }
 }
 
 // 触发图片上传
@@ -268,111 +309,226 @@ const triggerImageUpload = () => {
   imageInput.value.click()
 }
 
-// 处理图片上传
-const handleImageUpload = (event) => {
-  const file = event.target.files[0]
-  if (!file) return
-  
-  // 实际项目中应调用API上传图片
-  // 这里使用本地URL模拟
-  const imageUrl = URL.createObjectURL(file)
-  
-  // 创建新图片消息
-  const newMessage = {
-    id: Date.now().toString(),
-    sessionId: currentSession.value.id,
-    senderId: 'self',
-    isSelf: true,
-    content: imageUrl,
-    type: 'image',
-    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-    avatar: ''
-  }
-  
-  // 添加到消息列表
-  messages.value.push(newMessage)
-  
-  // 更新会话最后消息
-  updateSessionLastMessage(currentSession.value.id, '[图片]')
-  
-  // 滚动到底部
-  scrollToBottom()
-  
-  // 清空文件输入
-  event.target.value = ''
-}
-
 // 触发文件上传
 const triggerFileUpload = () => {
   fileInput.value.click()
 }
 
-// 处理文件上传
-const handleFileUpload = (event) => {
+// 处理图片上传
+const handleImageUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
   
-  // 创建新文件消息
-  const newMessage = {
-    id: Date.now().toString(),
-    sessionId: currentSession.value.id,
-    senderId: 'self',
-    isSelf: true,
-    content: '文件',
-    type: 'file',
-    file: {
-      name: file.name,
-      size: file.size,
-      url: URL.createObjectURL(file) // 实际项目中应使用上传后的URL
-    },
-    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-    avatar: ''
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请上传图片文件')
+    return
   }
   
-  // 添加到消息列表
-  messages.value.push(newMessage)
+  // 检查文件大小 (限制为5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error('图片大小不能超过5MB')
+    return
+  }
   
-  // 更新会话最后消息
-  updateSessionLastMessage(currentSession.value.id, `[文件] ${file.name}`)
+  await uploadAndSendFile(file, 'image')
   
-  // 滚动到底部
-  scrollToBottom()
-  
-  // 清空文件输入
+  // 清空input，允许重复上传同一个文件
   event.target.value = ''
 }
 
+// 处理文件上传
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  // 检查文件大小 (限制为10MB)
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过10MB')
+    return
+  }
+  
+  await uploadAndSendFile(file, 'file')
+  
+  // 清空input，允许重复上传同一个文件
+  event.target.value = ''
+}
+
+// 上传并发送文件消息
+const uploadAndSendFile = async (file, contentType) => {
+  if (!currentSession.value) return
+  
+  // 先在界面上显示上传中的消息
+  const tempMessage = {
+    id: 'temp-' + Date.now(),
+    content: contentType === 'image' ? URL.createObjectURL(file) : null,
+    file: contentType === 'file' ? { name: file.name, size: file.size } : null,
+    type: contentType,
+    time: formatMessageTime(new Date()),
+    isSelf: true,
+    avatar: defaultAvatar,
+    uploading: true
+  }
+  
+  messages.value.push(tempMessage)
+  await nextTick()
+  scrollToBottom()
+  
+  try {
+    // 上传文件
+    const uploadResult = await callUploadApi(uploadChatFile(file, currentSession.value.id, contentType))
+    
+    // 发送文件消息
+    const sendResult = await callApi(sendChatMessage({
+      sessionId: currentSession.value.id,
+      content: uploadResult.filePath,
+      contentType: contentType,
+      fileSize: file.size
+    }))
+    
+    // 替换临时消息
+    const index = messages.value.findIndex(m => m.id === tempMessage.id)
+    if (index !== -1) {
+      messages.value[index] = {
+        id: sendResult.messageId,
+        content: contentType === 'image' ? uploadResult.filePath : null,
+        type: contentType,
+        time: formatMessageTime(sendResult.sentAt || new Date()),
+        isSelf: true,
+        avatar: defaultAvatar,
+        file: contentType === 'file' ? {
+          name: file.name,
+          path: uploadResult.filePath,
+          size: file.size
+        } : null
+      }
+    }
+    
+    // 更新会话列表中的最后一条消息
+    const messageText = contentType === 'image' ? '[图片]' : `[文件: ${file.name}]`
+    updateSessionLastMessage(currentSession.value.id, messageText)
+    
+    ElMessage.success(contentType === 'image' ? '图片发送成功' : '文件发送成功')
+  } catch (error) {
+    // 错误已由callApi处理，标记消息上传失败
+    const index = messages.value.findIndex(m => m.id === tempMessage.id)
+    if (index !== -1) {
+      messages.value[index].failed = true
+      messages.value[index].uploading = false
+    }
+    
+    if (contentType === 'image' && tempMessage.content) {
+      URL.revokeObjectURL(tempMessage.content)
+    }
+    
+    console.error('发送文件消息失败:', error)
+  }
+}
+
 // 预览图片
-const previewImage = (url) => {
-  // 实际项目中可使用Element Plus的Image Viewer组件预览图片
-  window.open(url, '_blank')
+const previewImage = (imageUrl) => {
+  window.open(imageUrl, '_blank')
 }
 
 // 下载文件
 const downloadFile = (file) => {
-  // 实际项目中应提供真实的下载地址
-  const a = document.createElement('a')
-  a.href = file.url
-  a.download = file.name
-  a.click()
+  if (!file || !file.path) {
+    ElMessage.error('文件信息不完整，无法下载')
+    return
+  }
+  
+  // 创建下载链接
+  const link = document.createElement('a')
+  link.href = file.path
+  link.download = file.name || '未命名文件'
+  link.target = '_blank'
+  link.click()
+}
+
+// 更新会话列表中的最后一条消息
+const updateSessionLastMessage = (sessionId, message) => {
+  const index = sessions.value.findIndex(s => s.id === sessionId)
+  if (index !== -1) {
+    sessions.value[index].lastMessage = message
+    sessions.value[index].lastTime = formatSessionTime(new Date())
+    
+    // 将会话移到顶部
+    const session = sessions.value[index]
+    sessions.value.splice(index, 1)
+    sessions.value.unshift(session)
+  }
+}
+
+// 格式化会话时间
+const formatSessionTime = (time) => {
+  if (!time) return ''
+  
+  const date = new Date(time)
+  const now = new Date()
+  const diff = now - date
+  
+  // 今天内，显示时间
+  if (date.toDateString() === now.toDateString()) {
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  }
+  
+  // 7天内，显示星期
+  if (diff < 7 * 24 * 60 * 60 * 1000) {
+    const days = ['日', '一', '二', '三', '四', '五', '六']
+    return `星期${days[date.getDay()]}`
+  }
+  
+  // 当年内，显示月日
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`
+  }
+  
+  // 其他情况，显示年月日
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`
+}
+
+// 格式化消息时间
+const formatMessageTime = (time) => {
+  if (!time) return ''
+  
+  const date = new Date(time)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// 从文件路径中获取文件名
+const getFileNameFromPath = (path) => {
+  if (!path) return '未命名文件'
+  
+  const parts = path.split('/')
+  return parts[parts.length - 1]
 }
 
 // 格式化文件大小
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+const formatFileSize = (size) => {
+  if (!size) return '0 B'
+  
+  const units = ['B', 'KB', 'MB', 'GB']
+  let index = 0
+  let formattedSize = size
+  
+  while (formattedSize >= 1024 && index < units.length - 1) {
+    formattedSize /= 1024
+    index++
+  }
+  
+  return `${formattedSize.toFixed(2)} ${units[index]}`
 }
 
-// 监听消息列表变化，自动滚动到底部
-watch(messages, () => {
-  scrollToBottom()
-})
+// 滚动到底部
+const scrollToBottom = () => {
+  if (messageList.value) {
+    messageList.value.scrollTop = messageList.value.scrollHeight
+  }
+}
 
+// 组件挂载时加载会话列表
 onMounted(() => {
-  // 实际项目中应从API获取会话列表
+  loadSessions()
 })
 </script>
 

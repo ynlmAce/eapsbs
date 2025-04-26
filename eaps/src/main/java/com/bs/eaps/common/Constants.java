@@ -57,27 +57,27 @@ public class Constants {
         /**
          * 草稿
          */
-        public static final String DRAFT = "草稿";
+        public static final String DRAFT = "draft";
 
         /**
          * 待审核
          */
-        public static final String PENDING = "待审核";
+        public static final String PENDING = "pending";
 
         /**
          * 招聘中
          */
-        public static final String RECRUITING = "招聘中";
+        public static final String RECRUITING = "active";
 
         /**
          * 已驳回
          */
-        public static final String REJECTED = "已驳回";
+        public static final String REJECTED = "rejected";
 
         /**
          * 已结束
          */
-        public static final String ENDED = "已结束";
+        public static final String ENDED = "closed";
     }
 
     /**

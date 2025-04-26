@@ -28,10 +28,10 @@
                 <el-avatar :size="40"></el-avatar>
               </el-badge>
               <div class="session-info">
-                <div class="session-name">{{ session.name }}</div>
-                <div class="session-preview">{{ session.lastMessage }}</div>
+                <div class="session-name">{{ session.title || session.name }}</div>
+                <div class="session-preview">{{ session.lastMessage?.content || '' }}</div>
               </div>
-              <div class="session-time">{{ formatTime(session.lastTime) }}</div>
+              <div class="session-time">{{ formatTime(session.lastActiveAt || session.lastMessage?.sentAt) }}</div>
             </div>
             <el-empty v-if="filteredSessions.length === 0" description="暂无会话"></el-empty>
           </div>
@@ -43,21 +43,28 @@
         <el-card class="chat-area-card" v-if="currentSession">
           <template #header>
             <div class="card-header">
-              <span>{{ currentSession.name }}</span>
+              <span>{{ currentSession.title || currentSession.name }}</span>
               <div v-if="currentSession.isReadOnly">
                 <el-tag type="info" size="small">只读</el-tag>
               </div>
             </div>
           </template>
           
-          <div class="message-list" ref="messageListRef">
-            <div v-for="(message, index) in messages" :key="index" class="message-item" :class="{ 'self': message.self }">
+          <div class="message-list" ref="messageListRef" v-loading="messagesLoading">
+            <div v-for="message in messages" :key="message.id" class="message-item" :class="{ 'self': message.senderId === userId }">
               <div class="message-avatar">
-                <el-avatar :size="36"></el-avatar>
+                <el-avatar :size="36" :src="message.senderAvatar"></el-avatar>
               </div>
               <div class="message-content">
-                <div class="message-sender">{{ message.sender }} <span class="message-time">{{ formatTime(message.time) }}</span></div>
-                <div class="message-bubble">{{ message.content }}</div>
+                <div class="message-sender">{{ message.senderName }} <span class="message-time">{{ formatTime(message.sentAt) }}</span></div>
+                <div class="message-bubble">
+                  <span v-if="message.contentType === 'text'">{{ message.content }}</span>
+                  <img v-else-if="message.contentType === 'image'" :src="message.filePath" class="message-image" />
+                  <div v-else-if="message.contentType === 'file'" class="message-file">
+                    <i class="el-icon-document"></i>
+                    <a :href="message.filePath" target="_blank">{{ message.content }}</a>
+                  </div>
+                </div>
               </div>
             </div>
             <div v-if="messages.length === 0" class="empty-messages">
@@ -93,9 +100,11 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getChatSessions, getChatMessages, sendChatMessage, markMessageRead } from '@/api/chat'
 
 // 会话列表数据
 const sessionsLoading = ref(false)
+const messagesLoading = ref(false)
 const sessionList = ref([])
 const searchQuery = ref('')
 const currentSession = ref(null)
@@ -104,13 +113,14 @@ const currentSession = ref(null)
 const messages = ref([])
 const messageText = ref('')
 const messageListRef = ref(null)
+const userId = ref(parseInt(localStorage.getItem('userId') || '0'))
 
 // 过滤后的会话列表
 const filteredSessions = computed(() => {
   if (!searchQuery.value) return sessionList.value
   
   return sessionList.value.filter(session => 
-    session.name.toLowerCase().includes(searchQuery.value.toLowerCase())
+    (session.title || session.name).toLowerCase().includes(searchQuery.value.toLowerCase())
   )
 })
 
@@ -134,40 +144,14 @@ const formatTime = (timestamp) => {
 const fetchSessions = async () => {
   sessionsLoading.value = true
   try {
-    // 模拟API调用
-    setTimeout(() => {
-      sessionList.value = [
-        {
-          id: 1,
-          name: '张同学 (计算机科学)',
-          lastMessage: '好的，老师，我会按照您的建议修改简历',
-          lastTime: '2023-07-25 14:30:00',
-          unreadCount: 2,
-          isReadOnly: false
-        },
-        {
-          id: 2,
-          name: '李同学 (软件工程)',
-          lastMessage: '请问老师，申请实习需要准备哪些材料？',
-          lastTime: '2023-07-24 16:45:20',
-          unreadCount: 0,
-          isReadOnly: false
-        },
-        {
-          id: 3,
-          name: '王同学 (人工智能)',
-          lastMessage: '谢谢老师的推荐信！',
-          lastTime: '2023-07-20 10:20:15',
-          unreadCount: 0,
-          isReadOnly: true
-        }
-      ]
-      
-      sessionsLoading.value = false
-    }, 800)
+    const response = await getChatSessions()
+    if (response && response.list) {
+      sessionList.value = response.list
+    }
   } catch (error) {
     console.error('获取会话列表失败:', error)
     ElMessage.error('获取会话列表失败')
+  } finally {
     sessionsLoading.value = false
   }
 }
@@ -175,50 +159,30 @@ const fetchSessions = async () => {
 // 获取特定会话的消息
 const fetchMessages = async (sessionId) => {
   messages.value = []
+  messagesLoading.value = true
   
   try {
-    // 模拟API调用
-    setTimeout(() => {
-      const mockMessages = [
-        {
-          id: 1,
-          sender: '张同学',
-          content: '老师，您好！我想请教一下我的简历有什么需要改进的地方吗？',
-          time: '2023-07-25 14:15:30',
-          self: false
-        },
-        {
-          id: 2,
-          sender: '张老师',
-          content: '你好！我看了你的简历，建议：1. 实习经历部分可以更详细描述你的贡献；2. 项目经验部分突出技术难点；3. 精简自我评价部分。',
-          time: '2023-07-25 14:20:45',
-          self: true
-        },
-        {
-          id: 3,
-          sender: '张同学',
-          content: '好的，老师，我会按照您的建议修改简历',
-          time: '2023-07-25 14:30:00',
-          self: false
-        }
-      ]
+    const response = await getChatMessages(sessionId)
+    
+    if (response && response.list) {
+      messages.value = response.list
       
-      messages.value = mockMessages
-      
-      // 更新会话未读消息数
+      // 更新会话未读消息数，标记为已读
       if (currentSession.value) {
+        await markMessageRead(sessionId)
         const index = sessionList.value.findIndex(session => session.id === currentSession.value.id)
         if (index !== -1) {
           sessionList.value[index].unreadCount = 0
         }
       }
-      
-      // 滚动到底部
-      scrollToBottom()
-    }, 1000)
+    }
   } catch (error) {
     console.error('获取消息失败:', error)
     ElMessage.error('获取消息失败')
+  } finally {
+    messagesLoading.value = false
+    // 滚动到底部
+    scrollToBottom()
   }
 }
 
@@ -229,37 +193,51 @@ const selectSession = (session) => {
 }
 
 // 发送消息
-const sendMessage = () => {
+const sendMessage = async () => {
   if (!messageText.value.trim() || !currentSession.value || currentSession.value.isReadOnly) return
   
-  // 创建新消息
-  const newMessage = {
-    id: messages.value.length + 1,
-    sender: '张老师',
-    content: messageText.value,
-    time: new Date().toLocaleString(),
-    self: true
-  }
-  
-  // 添加到消息列表
-  messages.value.push(newMessage)
-  
-  // 更新会话列表中的最后一条消息
-  const index = sessionList.value.findIndex(session => session.id === currentSession.value.id)
-  if (index !== -1) {
-    sessionList.value[index].lastMessage = messageText.value
-    sessionList.value[index].lastTime = new Date().toLocaleString()
+  try {
+    // 发送消息到服务器
+    const result = await sendChatMessage(currentSession.value.id, messageText.value)
     
-    // 将当前会话移到顶部
-    const currentSessionData = sessionList.value.splice(index, 1)[0]
-    sessionList.value.unshift(currentSessionData)
+    if (result) {
+      // 添加到消息列表
+      const newMessage = {
+        id: result.messageId,
+        sessionId: currentSession.value.id,
+        senderId: userId.value,
+        senderName: localStorage.getItem('userName') || '辅导员',
+        content: messageText.value,
+        contentType: 'text',
+        sentAt: result.sentAt || new Date().toISOString()
+      }
+      
+      messages.value.push(newMessage)
+      
+      // 更新会话列表中的最后一条消息
+      const index = sessionList.value.findIndex(session => session.id === currentSession.value.id)
+      if (index !== -1) {
+        sessionList.value[index].lastMessage = {
+          content: messageText.value,
+          sentAt: newMessage.sentAt
+        }
+        sessionList.value[index].lastActiveAt = newMessage.sentAt
+        
+        // 将当前会话移到顶部
+        const currentSessionData = sessionList.value.splice(index, 1)[0]
+        sessionList.value.unshift(currentSessionData)
+      }
+      
+      // 清空输入框
+      messageText.value = ''
+      
+      // 滚动到底部
+      scrollToBottom()
+    }
+  } catch (error) {
+    console.error('发送消息失败:', error)
+    ElMessage.error('发送消息失败')
   }
-  
-  // 清空输入框
-  messageText.value = ''
-  
-  // 滚动到底部
-  scrollToBottom()
 }
 
 // 滚动到底部
@@ -450,5 +428,25 @@ onMounted(() => {
 
 .readonly-notice {
   margin-top: 15px;
+}
+
+.message-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 4px;
+}
+
+.message-file {
+  display: flex;
+  align-items: center;
+}
+
+.message-file i {
+  margin-right: 5px;
+}
+
+.message-file a {
+  color: inherit;
+  text-decoration: underline;
 }
 </style> 

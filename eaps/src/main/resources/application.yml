@@ -8,7 +8,7 @@ spring:
     name: 大学生就业帮扶系统
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/employment_support_system?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+    url: jdbc:mysql://localhost:3306/employment_support_system?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&allowMultiQueries=true
     username: root
     password: Likeyou118912.
     type: com.alibaba.druid.pool.DruidDataSource
@@ -43,9 +43,10 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 jwt:
-  secret: eaps-secret-key-2023
-  expiration: 86400
+  secret: ${JWT_SECRET:hNU76UTk2lqJiTWMwo5dS2g4PUdpLfGQ}
+  expiration: ${JWT_EXPIRATION:86400000}
+  allowed-clock-skew: 30
 
 file:
   upload:
-    path: ./uploads
+    path: D:/uploads

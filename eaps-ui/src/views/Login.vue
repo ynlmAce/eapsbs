@@ -63,9 +63,9 @@
         :closable="true"
         @close="showTestTip = false"
       >
-        <p><strong>学生:</strong> student123 / Student123</p>
-        <p><strong>企业:</strong> 91110108MA01GYT44K / Company123</p>
-        <p><strong>辅导员:</strong> counselor456 / Counselor123</p>
+        <p><strong>学生:</strong> 2021000003 / 123456</p>
+        <p><strong>企业:</strong> 566757129CE8G3D2ML / Aa123456789</p>
+        <p><strong>辅导员:</strong> 1020211 / aA123456</p>
       </el-alert>
     </div>
   </div>
@@ -136,6 +136,7 @@ const handleSubmit = async () => {
         localStorage.removeItem('token')
         localStorage.removeItem('userInfo')
         localStorage.removeItem('userRole')
+        localStorage.removeItem('userId') // 确保清除userId
         userStore.$reset()
         
         // 打印调试信息
@@ -152,26 +153,69 @@ const handleSubmit = async () => {
           loginForm.role
         )
         
+        console.log('登录结果:', result);
+        
         if (result.success) {
           ElMessage.success('登录成功')
           
           // 检查token是否存在
-          if (!localStorage.getItem('token')) {
-            console.error('登录成功但token未保存')
-            ElMessage.warning('登录状态异常，请稍后重试')
-            return
+          const token = localStorage.getItem('token');
+          if (!token) {
+            console.error('登录成功但token未保存');
+            console.log('尝试从结果中获取token并保存');
+            
+            // 尝试从结果中获取token
+            if (result.userInfo && result.userInfo.token) {
+              localStorage.setItem('token', result.userInfo.token);
+              console.log('已从结果中保存token');
+            } else {
+              ElMessage.warning('登录状态异常，请稍后重试');
+              return;
+            }
           }
           
-          // 根据用户角色跳转到不同的页面
-          const role = loginForm.role.toLowerCase()
-          if (role === 'student') {
-            router.push('/student/profile')
-          } else if (role === 'company') {
-            router.push('/company/profile')
-          } else if (role === 'counselor') {
-            router.push('/counselor/dashboard')
+          // 确保userInfo已保存
+          let userInfo = userStore.userInfo;
+          if (!userInfo) {
+            console.log('从localStorage获取userInfo');
+            try {
+              userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+            } catch (e) {
+              console.error('解析userInfo出错:', e);
+              userInfo = result.userInfo || {};
+            }
+            
+            // 如果仍然没有userInfo，使用返回的结果
+            if (!userInfo || Object.keys(userInfo).length === 0) {
+              userInfo = result.userInfo || {};
+              if (userInfo && Object.keys(userInfo).length > 0) {
+                localStorage.setItem('userInfo', JSON.stringify(userInfo));
+                console.log('已保存userInfo到localStorage');
+              }
+            }
+          }
+          
+          // 保存userId到localStorage
+          if (userInfo && userInfo.id) {
+            localStorage.setItem('userId', userInfo.id.toString());
+            console.log('成功保存userId到localStorage:', userInfo.id);
           } else {
-            router.push('/')
+            console.warn('无法获取用户ID');
+          }
+          
+          // 保存userRole
+          const role = (userInfo && userInfo.role) ? userInfo.role.toLowerCase() : loginForm.role.toLowerCase();
+          localStorage.setItem('userRole', role);
+          
+          // 根据用户角色跳转到不同的页面
+          if (role === 'student') {
+            router.push('/student/profile');
+          } else if (role === 'company') {
+            router.push('/company/profile');
+          } else if (role === 'counselor') {
+            router.push('/counselor/dashboard');
+          } else {
+            router.push('/');
           }
         } else {
           ElMessage.error(result.message || '登录失败，请检查账号和密码')
@@ -189,7 +233,7 @@ const handleSubmit = async () => {
         if (error.response && error.response.status === 403) {
           ElMessage.error('登录验证失败：权限被拒绝，请检查账号信息')
         } else {
-          ElMessage.error('登录失败，请稍后重试')
+          ElMessage.error(`登录失败：${error.message || '请稍后重试'}`)
         }
       } finally {
         loading.value = false

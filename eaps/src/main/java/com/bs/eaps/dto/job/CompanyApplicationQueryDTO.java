@@ -33,4 +33,27 @@ public class CompanyApplicationQueryDTO {
      * 每页条数
      */
     private Integer pageSize = 10;
+
+    /**
+     * 分组方式 (可选)
+     * 可选值: job, student
+     */
+    private String groupBy;
+
+    /**
+     * 岗位状态筛选 (可选)
+     * 可选值: recruiting, pending, rejected, ended
+     */
+    private String jobStatusFilter;
+
+    /**
+     * 关键词搜索 (可选)
+     */
+    private String keyword;
+
+    /**
+     * 标签筛选 (可选)
+     * 可选值: favorite, blacklist
+     */
+    private String tag;
 }

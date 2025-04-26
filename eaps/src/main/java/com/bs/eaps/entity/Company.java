@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
  * 企业实体类
  */
 @Data
-@TableName("company")
+@TableName("company_profile")
 public class Company {
 
     /**

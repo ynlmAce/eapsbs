@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bs.eaps.mapper.StudentBlacklistMapper">
+
+    <!-- 分页查询企业拉黑的学生列表，包含学生详细信息 -->
+    <select id="selectBlacklistedStudentsWithDetails" resultType="java.util.Map">
+        SELECT 
+            bl.id,
+            bl.student_id as studentId,
+            bl.created_at as blacklistedAt,
+            bl.reason,
+            sp.name as studentName,
+            sp.school as studentSchool,
+            sp.major as studentMajor,
+            sp.contact as studentContact
+        FROM 
+            student_blacklist bl
+        LEFT JOIN 
+            student_profile sp ON bl.student_id = sp.id
+        WHERE 
+            bl.company_id = #{companyId}
+        ORDER BY 
+            bl.created_at DESC
+    </select>
+</mapper> 

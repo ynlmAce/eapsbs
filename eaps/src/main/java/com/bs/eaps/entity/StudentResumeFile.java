@@ -43,6 +43,18 @@ public class StudentResumeFile implements Serializable {
     private String filePath;
 
     /**
+     * 文件大小(字节)
+     */
+    @TableField("file_size")
+    private Long fileSize;
+
+    /**
+     * 文件类型
+     */
+    @TableField("file_type")
+    private String fileType;
+
+    /**
      * 上传时间
      */
     @TableField("uploaded_at")

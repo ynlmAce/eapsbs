@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 // 路由配置
@@ -72,6 +72,16 @@ const routes = [
         component: () => import('../views/company/Jobs.vue')
       },
       {
+        path: 'job/create',
+        name: 'CompanyJobCreate',
+        component: () => import('../views/company/JobForm.vue')
+      },
+      {
+        path: 'job/edit/:id',
+        name: 'CompanyJobEdit',
+        component: () => import('../views/company/JobForm.vue')
+      },
+      {
         path: 'applications',
         name: 'CompanyApplications',
         component: () => import('../views/company/Applications.vue')
@@ -129,71 +139,90 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes
 })
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token') || ''
-  const userRole = localStorage.getItem('userRole') || ''
-  const userInfoStr = localStorage.getItem('userInfo') || '{}'
+  // 获取token
+  const token = localStorage.getItem('token');
+  // 获取当前用户角色
+  const userRole = localStorage.getItem('userRole');
   
-  // 尝试从userInfo中获取备用角色信息
-  let backupRole = ''
-  try {
-    const userInfo = JSON.parse(userInfoStr)
-    backupRole = userInfo.role || ''
-    // 如果localStorage中没有角色但userInfo中有，则使用userInfo中的角色
-    if (!userRole && backupRole) {
-      console.log('从userInfo中恢复角色:', backupRole)
-      localStorage.setItem('userRole', backupRole.toLowerCase())
-    }
-  } catch (e) {
-    console.error('解析userInfo失败:', e)
-  }
-  
-  // 使用从userInfo恢复的角色或原始角色
-  const effectiveRole = userRole || (backupRole ? backupRole.toLowerCase() : '')
+  // 判断路由是否需要身份验证
+  const requiresAuth = to.meta.requiresAuth !== false; // 默认都需要登录
+  // 获取路由允许的角色
+  const routeRole = to.meta.role;
   
   console.log('路由守卫:', {
     to: to.path,
-    requiresAuth: to.meta.requiresAuth,
-    role: to.meta.role,
+    requiresAuth,
+    role: routeRole,
     hasToken: !!token,
-    userRole: effectiveRole,
-    tokenLength: token ? token.length : 0
-  })
+    userRole,
+    from: from.path
+  });
   
-  // 处理未登录情况
-  if (to.meta.requiresAuth && !token) {
-    console.log('需要登录，但未检测到token，重定向到登录页')
-    next('/login?auth_required=true')
-    return
+  // 不需要登录的路由，直接通过
+  if (!requiresAuth) {
+    console.log('无需登录路由');
+    
+    // 如果已登录且访问登录/注册页，则重定向到首页或对应角色首页
+    if (token && (to.path === '/login' || to.path === '/register')) {
+      // 根据角色重定向到不同首页
+      if (userRole === 'student') {
+        return next('/student/profile');
+      } else if (userRole === 'company') {
+        return next('/company/profile');
+      } else if (userRole === 'counselor') {
+        return next('/counselor/dashboard');
+      } else {
+        return next('/');
+      }
+    }
+    
+    return next();
   }
   
-  // 处理角色权限
-  if (to.meta.role && effectiveRole) {
-    const routeRole = String(to.meta.role).toLowerCase()
-    const currentRole = String(effectiveRole).toLowerCase()
+  // 需要登录但没有token
+  if (!token) {
+    console.log('需要登录但没有token，重定向到登录页');
+    // 保存尝试访问的页面，登录后跳转
+    if (to.path !== '/login') {
+      localStorage.setItem('redirectPath', to.fullPath);
+    }
+    return next('/login');
+  }
+  
+  // 检查角色是否匹配
+  if (routeRole && userRole) {
+    // 角色比较
+    const roleMatches = routeRole === userRole;
+    console.log('角色比较:', {
+      routeRole,
+      currentRole: userRole,
+      '匹配': roleMatches
+    });
     
-    console.log('角色比较:', { 
-      routeRole, 
-      currentRole, 
-      匹配: routeRole === currentRole 
-    })
-    
-    if (routeRole !== currentRole) {
-      console.log('角色不匹配，重定向到首页')
-      ElMessage.error('您没有权限访问此页面')
-      next('/')
-      return
+    if (!roleMatches) {
+      console.log('角色不匹配，拒绝访问');
+      // 重定向到对应角色的入口页面
+      if (userRole === 'student') {
+        return next('/student/profile');
+      } else if (userRole === 'company') {
+        return next('/company/profile');
+      } else if (userRole === 'counselor') {
+        return next('/counselor/dashboard');
+      } else {
+        return next('/');
+      }
     }
   }
   
-  // 通过所有检查，放行
-  console.log('路由通过:', to.path)
-  next()
-})
+  // 如果一切正常，继续导航
+  console.log('路由通过:', to.path);
+  next();
+});
 
 export default router 

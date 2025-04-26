@@ -2,11 +2,17 @@ package com.bs.eaps.dto;
 
 import lombok.Data;
 
+import java.io.Serializable;
+import java.time.LocalDateTime;
+
 /**
  * 岗位标签数据传输对象
  */
 @Data
-public class JobTagDTO {
+public class JobTagDTO implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
     /**
      * 标签ID
      */
@@ -18,12 +24,7 @@ public class JobTagDTO {
     private String name;
 
     /**
-     * 标签描述
+     * 创建时间
      */
-    private String description;
-
-    /**
-     * 标签状态 (0-禁用, 1-启用)
-     */
-    private Integer status;
+    private LocalDateTime createdAt;
 }

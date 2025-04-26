@@ -2,7 +2,7 @@ package com.bs.eaps.dto.job;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -64,17 +64,17 @@ public class JobPublishDTO {
     /**
      * 福利标签
      */
-    private List<String> welfareTags;
+    private List<Long> welfareTags;
 
     /**
      * 岗位标签
      */
-    private List<String> jobTags;
+    private List<Long> jobTags;
 
     /**
      * 有效期
      */
-    private LocalDateTime validUntil;
+    private LocalDate validUntil;
 
     /**
      * 联系人

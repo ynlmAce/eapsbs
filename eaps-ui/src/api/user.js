@@ -25,7 +25,24 @@ export function login(username, password, role) {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     }
-  })
+  }).then(response => {
+    // 处理API响应，规范化数据格式
+    console.log('登录API响应:', response);
+    
+    // 检查响应是否有效
+    if (!response) {
+      throw new Error('无效的响应');
+    }
+    
+    // 处理API标准响应格式 {error, body, message}
+    if (response.error === 0 && response.body) {
+      // 登录成功，返回用户数据
+      return response.body;
+    } else {
+      // 登录失败，抛出错误
+      throw new Error(response.message || '登录失败');
+    }
+  });
 }
 
 /**
@@ -60,14 +77,33 @@ export function logout() {
  * @returns {Promise} 修改结果
  */
 export function changePassword(oldPassword, newPassword) {
+  // 从localStorage获取当前用户ID
+  const userInfo = localStorage.getItem('userInfo');
+  let userId = null;
+  
+  if (userInfo) {
+    try {
+      const parsedUserInfo = JSON.parse(userInfo);
+      userId = parsedUserInfo.id;
+    } catch (e) {
+      console.error('无法解析用户信息:', e);
+    }
+  }
+  
+  if (!userId) {
+    console.error('未能获取用户ID，无法修改密码');
+    return Promise.reject(new Error('未能获取用户ID，无法修改密码'));
+  }
+  
   return request({
-    url: '/api/auth/changePassword',
+    url: '/api/auth/change-password',
     method: 'post',
     data: {
+      userId,
       oldPassword,
       newPassword
     }
-  })
+  });
 }
 
 /**
@@ -206,7 +242,7 @@ export const updateUserProfile = (data) => {
 }
 
 // 学生简历API
-export const uploadResumeFile = (file) => {
+export const uploadStudentResume = (file) => {
   const formData = new FormData()
   formData.append('file', file)
   
