@@ -59,4 +59,10 @@ public class ChatMessage implements Serializable {
      */
     @TableField("sent_at")
     private LocalDateTime sentAt;
+
+    /**
+     * 是否已读
+     */
+    @TableField("is_read")
+    private Boolean isRead;
 }

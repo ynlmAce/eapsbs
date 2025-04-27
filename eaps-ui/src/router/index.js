@@ -52,6 +52,11 @@ const routes = [
         path: 'chat',
         name: 'StudentChat',
         component: () => import('../views/student/Chat.vue')
+      },
+      {
+        path: 'company/:id',
+        name: 'StudentCompanyDetail',
+        component: () => import('../views/student/CompanyDetail.vue')
       }
     ]
   },

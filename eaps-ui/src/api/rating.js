@@ -17,7 +17,7 @@ import { handleResponse } from '@/utils/api'
  */
 export function submitRating(ratingData) {
   return request({
-    url: '/rating/submit',
+    url: '/api/rating/submit',
     method: 'post',
     data: ratingData
   }).then(handleResponse)
@@ -34,7 +34,7 @@ export function submitRating(ratingData) {
  */
 export function getCompanyRatings(params) {
   return request({
-    url: '/rating/company-ratings',
+    url: '/api/rating/company-ratings',
     method: 'post',
     data: params
   }).then(handleResponse)
@@ -47,7 +47,7 @@ export function getCompanyRatings(params) {
  */
 export function getCompanyRatingOverview(companyId) {
   return request({
-    url: '/rating/overview',
+    url: '/api/rating/overview',
     method: 'post',
     data: { companyId }
   }).then(handleResponse)
@@ -62,7 +62,7 @@ export function getCompanyRatingOverview(companyId) {
  */
 export function getStudentRatings(params) {
   return request({
-    url: '/rating/student-ratings',
+    url: '/api/rating/student-ratings',
     method: 'post',
     data: params || {}
   }).then(handleResponse)
@@ -77,7 +77,7 @@ export function getStudentRatings(params) {
  */
 export function getCompanyReceivedRatings(params) {
   return request({
-    url: '/rating/received-ratings',
+    url: '/api/rating/received-ratings',
     method: 'post',
     data: params || {}
   }).then(handleResponse)
@@ -91,7 +91,7 @@ export function getCompanyReceivedRatings(params) {
  */
 export function reportRating(ratingId, reason) {
   return request({
-    url: '/rating/report',
+    url: '/api/rating/report',
     method: 'post',
     data: {
       ratingId,
@@ -107,7 +107,7 @@ export function reportRating(ratingId, reason) {
  */
 export function deleteRating(ratingId) {
   return request({
-    url: '/rating/delete',
+    url: '/api/rating/delete',
     method: 'post',
     data: { ratingId }
   }).then(handleResponse)
@@ -122,7 +122,7 @@ export function deleteRating(ratingId) {
  */
 export function handleReportedRating(reportId, action, resolution) {
   return request({
-    url: '/rating/handle-report',
+    url: '/api/rating/handle-report',
     method: 'post',
     data: {
       reportId,

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bs.eaps.mapper.RatingMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.bs.eaps.entity.Rating">
+        <id column="id" property="id" />
+        <result column="student_id" property="studentId" />
+        <result column="company_id" property="companyId" />
+        <result column="job_id" property="jobId" />
+        <result column="overall_score" property="overallScore" />
+        <result column="job_authenticity_score" property="jobAuthenticityScore" />
+        <result column="interview_experience_score" property="interviewExperienceScore" />
+        <result column="work_environment_score" property="workEnvironmentScore" />
+        <result column="welfare_delivery_score" property="welfareDeliveryScore" />
+        <result column="comment" property="comment" />
+        <result column="is_anonymous" property="isAnonymous" />
+        <result column="status" property="status" />
+        <result column="submitted_at" property="submittedAt" />
+    </resultMap>
+
+    <!-- 查询企业评价列表 -->
+    <select id="selectCompanyRatings" resultType="java.util.Map">
+        SELECT 
+            r.id,
+            r.overall_score AS overallScore,
+            r.job_authenticity_score AS jobAuthenticityScore,
+            r.interview_experience_score AS interviewExperienceScore,
+            r.work_environment_score AS workEnvironmentScore,
+            r.welfare_delivery_score AS welfareDeliveryScore,
+            r.comment,
+            r.is_anonymous AS isAnonymous,
+            r.submitted_at AS submittedAt,
+            CASE 
+                WHEN r.is_anonymous = 1 THEN '匿名用户'
+                ELSE sp.name
+            END AS studentName,
+            j.id AS jobId,
+            j.title AS jobTitle
+        FROM 
+            rating r
+        LEFT JOIN
+            student_profile sp ON r.student_id = sp.user_id
+        LEFT JOIN
+            job_posting j ON r.job_id = j.id
+        WHERE 
+            r.company_id = #{companyId}
+        AND 
+            r.status = 'active'
+        ORDER BY
+            <choose>
+                <when test="sortBy == 'score'">r.overall_score DESC</when>
+                <otherwise>r.submitted_at DESC</otherwise>
+            </choose>
+    </select>
+
+    <!-- 计算企业平均评分 -->
+    <select id="calculateCompanyAverageScore" resultType="java.util.Map">
+        SELECT
+            AVG(overall_score) AS overallAvg,
+            AVG(job_authenticity_score) AS jobAuthenticityAvg,
+            AVG(interview_experience_score) AS interviewExperienceAvg,
+            AVG(work_environment_score) AS workEnvironmentAvg,
+            AVG(welfare_delivery_score) AS welfareDeliveryAvg,
+            COUNT(*) AS ratingCount
+        FROM
+            rating
+        WHERE
+            company_id = #{companyId}
+        AND
+            status = 'active'
+    </select>
+
+</mapper> 

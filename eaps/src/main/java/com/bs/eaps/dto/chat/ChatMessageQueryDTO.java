@@ -22,4 +22,9 @@ public class ChatMessageQueryDTO {
      * 每页条数
      */
     private Integer pageSize = 20;
+
+    /**
+     * 查询ID小于此值的消息（用于加载更多）
+     */
+    private Long before;
 }

@@ -114,8 +114,17 @@
             :show-file-list="false"
             :before-upload="beforeLogoUpload"
           >
-            <img v-if="form.logoUrl" :src="form.logoUrl" class="logo-image" />
-            <el-icon v-else class="logo-uploader-icon"><Plus /></el-icon>
+            <img 
+              v-if="form.logoUrl" 
+              :src="form.logoUrl" 
+              class="logo-image" 
+              alt="企业Logo" 
+              @error="handleImageError"
+            />
+            <div v-else class="logo-uploader-icon">
+              <el-icon><Plus /></el-icon>
+              <div>上传Logo</div>
+            </div>
           </el-upload>
           <div class="upload-tip">请上传公司Logo图片，建议尺寸200x200像素，格式为JPG、PNG</div>
         </el-form-item>
@@ -147,14 +156,14 @@
         <h4>认证状态</h4>
         <el-form-item>
           <el-tag :type="getStatusType" size="large">{{ getStatusText }}</el-tag>
-          <div v-if="form.certificationStatus === 'pending'" class="cert-pending-note">
+          <div v-if="form.certificationStatus === 'pending' || form.certificationStatus === '待认证'" class="cert-pending-note">
             您的企业认证资料正在审核中，请耐心等待。审核通常需要1-3个工作日完成。
           </div>
-          <div v-if="form.certificationStatus === 'rejected'" class="cert-rejected-note">
+          <div v-if="form.certificationStatus === 'rejected' || form.certificationStatus === 'failed' || form.certificationStatus === '认证失败'" class="cert-rejected-note">
             <p>您的企业认证被驳回，原因：{{ form.rejectionReason || '信息有误，请修改后重新提交' }}</p>
             <p>修改相关信息后可重新提交认证申请</p>
           </div>
-          <div v-if="form.certificationStatus === 'approved'" class="cert-approved-note">
+          <div v-if="form.certificationStatus === 'approved' || form.certificationStatus === 'certified' || form.certificationStatus === '已认证'" class="cert-approved-note">
             <p>认证有效期至：{{ formatDate(form.certificationExpiryDate) }}</p>
             <p v-if="isExpiryDateNear" class="expiry-warning">认证即将到期，请及时更新企业资料</p>
           </div>
@@ -221,16 +230,24 @@ const rules = {
 const getStatusText = computed(() => {
   switch (form.certificationStatus) {
     case 'uncertified':
+    case '未认证':
       return '未认证'
     case 'pending':
+    case '待认证':
       return '认证审核中'
     case 'approved':
+    case 'certified':
+    case '已认证':
       return '已认证'
     case 'rejected':
+    case 'failed':
+    case '认证失败':
       return '认证被驳回'
     case 'expired':
+    case '已过期':
       return '认证已过期'
     default:
+      console.log('未知认证状态:', form.certificationStatus)
       return '未知状态'
   }
 })
@@ -239,14 +256,21 @@ const getStatusText = computed(() => {
 const getStatusType = computed(() => {
   switch (form.certificationStatus) {
     case 'uncertified':
+    case '未认证':
       return 'info'
     case 'pending':
+    case '待认证':
       return 'warning'
     case 'approved':
+    case 'certified':
+    case '已认证':
       return 'success'
     case 'rejected':
+    case 'failed':
+    case '认证失败':
       return 'danger'
     case 'expired':
+    case '已过期':
       return 'danger'
     default:
       return 'info'
@@ -273,6 +297,13 @@ const formatDate = (dateString) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+// Logo图片加载错误处理
+const handleImageError = (e) => {
+  console.error('Logo图片加载失败:', e);
+  console.log('当前Logo URL:', form.logoUrl);
+  ElMessage.warning('Logo图片加载失败，请重新上传');
+}
+
 // 页面加载时获取数据
 onMounted(async () => {
   const loading = ElLoading.service({
@@ -283,6 +314,7 @@ onMounted(async () => {
   
   try {
     const profileData = await callApi(getCompanyProfile())
+    console.log('获取到的企业信息:', profileData) // 调试信息
     
     // 填充表单数据
     form.name = profileData.name || ''
@@ -302,9 +334,47 @@ onMounted(async () => {
       form.hrContact = { name: '', phone: '', email: '', workTime: '' }
     }
     
-    // 设置Logo和营业执照
-    form.logoUrl = profileData.logoPath || ''
-    form.licenseUrl = profileData.licenseFilePath || ''
+    // 设置Logo路径
+    if (profileData.logoPath) {
+      console.log('原始Logo路径:', profileData.logoPath)
+      
+      // 获取后端API的基础URL，而不是前端URL
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+      console.log('API基础URL:', apiBaseUrl)
+      
+      // 从URL中提取域名部分（去掉/api等路径）
+      const urlParts = apiBaseUrl.match(/^(https?:\/\/[^\/]+)/)
+      const backendBaseUrl = urlParts ? urlParts[1] : 'http://localhost:8080'
+      console.log('后端服务器基础URL:', backendBaseUrl)
+      
+      // 构建完整路径 - 指向后端服务器
+      const logoPath = profileData.logoPath.startsWith('/') 
+        ? backendBaseUrl + profileData.logoPath 
+        : backendBaseUrl + '/' + profileData.logoPath
+      
+      console.log('构建的完整Logo URL:', logoPath)
+      form.logoUrl = logoPath
+    } else {
+      form.logoUrl = ''
+    }
+    
+    // 设置营业执照路径
+    if (profileData.licenseFilePath) {
+      console.log('原始营业执照路径:', profileData.licenseFilePath)
+      
+      // 获取后端API的基础URL，而不是前端URL
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+      const urlParts = apiBaseUrl.match(/^(https?:\/\/[^\/]+)/)
+      const backendBaseUrl = urlParts ? urlParts[1] : 'http://localhost:8080'
+      
+      const licensePath = profileData.licenseFilePath.startsWith('/') 
+        ? backendBaseUrl + profileData.licenseFilePath 
+        : backendBaseUrl + '/' + profileData.licenseFilePath
+      
+      form.licenseUrl = licensePath
+    } else {
+      form.licenseUrl = ''
+    }
     
     // 设置认证状态
     form.certificationStatus = profileData.certificationStatus || 'uncertified'
@@ -315,7 +385,7 @@ onMounted(async () => {
     if (profileData.licenseFilePath) {
       licenseFileList.value = [{
         name: profileData.licenseFileName || '营业执照',
-        url: profileData.licenseFilePath
+        url: form.licenseUrl
       }]
     }
   } catch (error) {
@@ -388,15 +458,43 @@ const uploadLogo = async (params) => {
       background: 'rgba(255, 255, 255, 0.7)'
     })
     
+    console.log('正在上传Logo:', params.file.name, params.file.type)
+    
     const response = await callUploadApi(uploadCompanyLogo(params.file), {
       successMsg: 'Logo上传成功'
     })
     
-    form.logoUrl = response.filePath
+    console.log('Logo上传响应:', response) // 调试信息
+    
+    // 构建完整路径 - 指向后端服务器
+    if (response && response.filePath) {
+      console.log('上传后返回的Logo路径:', response.filePath)
+      
+      // 获取后端API的基础URL，而不是前端URL
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+      const urlParts = apiBaseUrl.match(/^(https?:\/\/[^\/]+)/)
+      const backendBaseUrl = urlParts ? urlParts[1] : 'http://localhost:8080'
+      console.log('后端服务器基础URL:', backendBaseUrl)
+      
+      const logoPath = response.filePath.startsWith('/') 
+        ? backendBaseUrl + response.filePath 
+        : backendBaseUrl + '/' + response.filePath
+      
+      console.log('构建的完整Logo URL:', logoPath)
+      form.logoUrl = logoPath
+      
+      // 验证URL是否可访问
+      const img = new Image()
+      img.onload = () => console.log('Logo图片加载成功')
+      img.onerror = (e) => console.error('Logo图片加载失败:', e)
+      img.src = logoPath
+    }
+    
     loading.close()
   } catch (error) {
     // callUploadApi 已处理错误消息
     console.error('Logo上传失败:', error)
+    loading.close()
   }
 }
 
@@ -433,12 +531,24 @@ const uploadLicense = async (params) => {
       successMsg: '营业执照上传成功，认证状态已更新为待审核'
     })
     
-    form.licenseUrl = response.filePath
+    // 构建完整路径 - 指向后端服务器
+    if (response && response.filePath) {
+      // 获取后端API的基础URL，而不是前端URL
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+      const urlParts = apiBaseUrl.match(/^(https?:\/\/[^\/]+)/)
+      const backendBaseUrl = urlParts ? urlParts[1] : 'http://localhost:8080'
+      
+      const licensePath = response.filePath.startsWith('/') 
+        ? backendBaseUrl + response.filePath 
+        : backendBaseUrl + '/' + response.filePath
+      
+      form.licenseUrl = licensePath
+    }
     
     // 更新文件列表
     licenseFileList.value = [{
       name: response.fileName || params.file.name,
-      url: response.filePath
+      url: form.licenseUrl
     }]
     
     // 更新认证状态
@@ -448,6 +558,7 @@ const uploadLicense = async (params) => {
   } catch (error) {
     // callUploadApi 已处理错误消息
     console.error('营业执照上传失败:', error)
+    loading.close()
   }
 }
 
@@ -496,17 +607,23 @@ h4 {
 }
 
 .logo-uploader-icon {
-  font-size: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   color: #8c939d;
-  width: 178px;
-  height: 178px;
-  line-height: 178px;
-  text-align: center;
+  width: 100%;
+  height: 100%;
+}
+
+.logo-uploader-icon .el-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
 }
 
 .logo-image {
-  width: 200px;
-  height: 200px;
+  width: 100%;
+  height: 100%;
   display: block;
   object-fit: contain;
 }

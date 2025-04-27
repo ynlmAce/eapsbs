@@ -76,4 +76,12 @@ public interface JobService {
      * @return 学生ID
      */
     Long getStudentIdByUserId(Long userId);
+
+    /**
+     * 通过岗位ID获取企业ID
+     * 
+     * @param jobId 岗位ID
+     * @return 企业ID
+     */
+    Long getCompanyIdByJobId(Long jobId);
 }

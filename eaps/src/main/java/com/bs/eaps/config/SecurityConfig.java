@@ -50,6 +50,8 @@ public class SecurityConfig {
                                 "/api/user/verify-security-answer",
                                 "/api/user/reset-password")
                         .permitAll()
+                        // 允许访问静态资源
+                        .requestMatchers("/uploads/**").permitAll()
                         // 允许OPTIONS请求
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // 其他所有请求需要认证

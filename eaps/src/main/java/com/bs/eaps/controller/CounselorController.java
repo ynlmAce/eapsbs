@@ -53,6 +53,26 @@ public class CounselorController {
     }
 
     /**
+     * 获取所有状态的任务列表（主要用于岗位审核）
+     */
+    @PostMapping("/tasks/all")
+    public ApiResponse getAllTasksList(@RequestBody TaskListQueryDTO queryDTO) {
+        log.info("获取所有状态任务列表：{}", queryDTO);
+
+        // 从queryDTO中提取taskType和分页信息
+        String taskType = queryDTO.getType();
+        PageRequestDTO pageRequest = new PageRequestDTO();
+        pageRequest.setPage(queryDTO.getPage());
+        pageRequest.setPageSize(queryDTO.getPageSize());
+
+        // 提取额外的筛选参数
+        boolean includeAll = queryDTO.isIncludeAll();
+        String statusFilter = queryDTO.getJobStatus(); // 状态筛选，可用于岗位状态或企业状态
+
+        return ApiResponse.success(counselorService.getAllTasksList(taskType, pageRequest, includeAll, statusFilter));
+    }
+
+    /**
      * 处理任务
      */
     @PostMapping("/task/process")

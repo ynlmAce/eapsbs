@@ -26,8 +26,8 @@ public class RatingController {
      */
     @PostMapping("/submit")
     public ApiResponse submitRating(@RequestBody RatingSubmitDTO ratingDTO) {
-        Long studentId = SecurityUtils.getCurrentUserId();
-        return ApiResponse.success(ratingService.submitRating(studentId, ratingDTO));
+        Long userId = SecurityUtils.getCurrentUserId();
+        return ApiResponse.success(ratingService.submitRating(userId, ratingDTO));
     }
 
     /**

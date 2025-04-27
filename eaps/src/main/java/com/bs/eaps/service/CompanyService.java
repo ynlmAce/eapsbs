@@ -104,4 +104,12 @@ public interface CompanyService {
      * @return 企业用户ID
      */
     Long getCompanyUserIdByJobId(Long jobId);
+
+    /**
+     * 获取企业详情通过企业ID
+     * 
+     * @param companyId 企业ID
+     * @return 企业详细信息
+     */
+    Map<String, Object> getCompanyDetailById(Long companyId);
 }

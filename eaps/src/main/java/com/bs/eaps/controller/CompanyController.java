@@ -210,4 +210,24 @@ public class CompanyController {
         }
         return ApiResponse.success(companyService.getCompanyUserIdByJobId(jobId));
     }
+
+    /**
+     * 获取企业详情
+     * 
+     * @param params 请求参数，包含企业ID
+     * @return 企业详细信息
+     */
+    @PostMapping("/company/detail")
+    public ApiResponse getCompanyDetail(@RequestBody Map<String, Object> params) {
+        Long companyId = params.containsKey("companyId") ? ((Number) params.get("companyId")).longValue() : null;
+
+        if (companyId == null) {
+            return ApiResponse.businessError("企业ID不能为空");
+        }
+
+        log.info("获取企业详情: companyId={}", companyId);
+
+        // 调用服务获取企业详细信息
+        return ApiResponse.success(companyService.getCompanyDetailById(companyId));
+    }
 }

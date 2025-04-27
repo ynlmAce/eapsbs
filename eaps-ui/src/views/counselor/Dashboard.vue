@@ -181,9 +181,13 @@
           <div v-if="currentTask.type === 'companyCertification'" class="task-specific-details">
             <h4>企业资质信息</h4>
             <p>企业名称：{{ currentTask.details?.name }}</p>
-            <p>统一社会信用代码：{{ currentTask.details?.code }}</p>
+            <p>统一社会信用代码：{{ currentTask.details?.unified_social_credit_code }}</p>
             <p>行业：{{ currentTask.details?.industry }}</p>
             <p>企业规模：{{ currentTask.details?.size }}</p>
+            <p>地址：{{ currentTask.details?.address }}</p>
+            <p>HR联系方式：{{ currentTask.details?.hr_contact }}</p>
+            <p>认证状态：{{ getCertificationStatus(currentTask.details?.certification_status) }}</p>
+            <p v-if="currentTask.details?.certification_expiry_date">认证有效期：{{ currentTask.details?.certification_expiry_date }}</p>
             <div class="document-preview">
               <p>营业执照：</p>
               <el-image
@@ -194,23 +198,40 @@
                 style="width: 100%; max-height: 300px;"
               ></el-image>
             </div>
+            <div v-if="currentTask.details?.description" class="company-description">
+              <p>公司简介：</p>
+              <p>{{ currentTask.details?.description }}</p>
+            </div>
           </div>
           
           <!-- 岗位审核详情 -->
           <div v-if="currentTask.type === 'jobAudit'" class="task-specific-details">
             <h4>岗位信息</h4>
             <p>岗位名称：{{ currentTask.details?.title }}</p>
-            <p>所属企业：{{ currentTask.details?.company }}</p>
+            <p>所属企业：{{ currentTask.companyName }}</p>
             <p>工作地点：{{ currentTask.details?.location }}</p>
             <p>薪资范围：{{ currentTask.details?.salary }}</p>
-            <p>招聘人数：{{ currentTask.details?.count }}人</p>
-            <div class="job-description">
-              <p>岗位描述：</p>
-              <p>{{ currentTask.details?.description }}</p>
+            <p>招聘人数：{{ currentTask.details?.headcount }}人</p>
+            <p>学历要求：{{ currentTask.details?.education }}</p>
+            <p>经验要求：{{ currentTask.details?.experience }}</p>
+            <p>工作类型：{{ currentTask.details?.jobType }}</p>
+            <p>工作时间：{{ currentTask.details?.workTime }}</p>
+            <p>联系人为：{{ currentTask.details?.contactPerson }}</p>
+            <p>联系方式：{{ currentTask.details?.contactMethod }}</p>
+            <p>有效期至：{{ currentTask.details?.validUntil }}</p>
+            <p>岗位描述：{{ currentTask.details?.description }}</p>
+            <p>岗位要求：{{ currentTask.details?.requirement }}</p>
+            <div v-if="currentTask.details?.jobTags && currentTask.details?.jobTags.length > 0" class="job-tags">
+              <p>岗位标签：</p>
+              <el-tag v-for="tag in currentTask.details?.jobTags" :key="tag" class="mx-1" type="info">
+                {{ tag }}
+              </el-tag>
             </div>
-            <div class="job-requirements">
-              <p>岗位要求：</p>
-              <p>{{ currentTask.details?.requirements }}</p>
+            <div v-if="currentTask.details?.welfareTags && currentTask.details?.welfareTags.length > 0" class="welfare-tags">
+              <p>岗位福利：</p>
+              <el-tag v-for="tag in currentTask.details?.welfareTags" :key="tag" class="mx-1" type="success">
+                {{ tag }}
+              </el-tag>
             </div>
           </div>
           
@@ -298,8 +319,17 @@ const taskType = ref('all')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const taskDetailDialogVisible = ref(false)
+const handleTaskDialogVisible = ref(false)
 const currentTask = ref(null)
 const refreshInterval = ref(null)
+
+// 处理任务表单
+const handleForm = ref({
+  action: '',
+  reason: '',
+  behaviorScore: 0
+})
+const handleFormRef = ref(null)
 
 // 使用Pinia store中的数据
 const dashboard = computed(() => counselorStore.dashboard)
@@ -385,7 +415,28 @@ const handleTypeChange = () => {
 
 // 查看任务详情
 const viewTaskDetail = (row) => {
-  currentTask.value = row
+  currentTask.value = {
+    ...row,
+    targetName: row.title || row.companyName || '未知任务'
+  }
+
+  // 根据任务类型，将相应的详情数据附加到currentTask.details中
+  if (row.type === 'jobAudit' && row.jobDetails) {
+    currentTask.value.details = row.jobDetails
+  } else if (row.type === 'companyCertification' && row.companyDetails) {
+    currentTask.value.details = row.companyDetails
+  } else if (row.type === 'reportHandling') {
+    // 处理举报详情数据
+    currentTask.value.details = {
+      // 此处可根据实际举报数据结构进行处理
+      reporter: row.reporter || '匿名用户',
+      reason: row.reportReason || '未提供原因',
+      reportTime: row.reportedAt || new Date().toLocaleString(),
+      reportedItemType: row.reportedItemType || 'unknown',
+      // 根据举报类型设置其他属性
+    }
+  }
+
   taskDetailDialogVisible.value = true
 }
 
@@ -525,6 +576,71 @@ watch(
     loadTasks()
   }
 )
+
+// 从对话框中处理任务
+const handleTaskFromDialog = () => {
+  taskDetailDialogVisible.value = false
+  handleTaskDialogVisible.value = true
+}
+
+// 提交任务处理
+const submitTaskHandle = async () => {
+  if (!handleFormRef.value) return
+  
+  await handleFormRef.value.validate(async (valid) => {
+    if (valid) {
+      try {
+        // 根据任务类型提交不同的处理请求
+        if (currentTask.value.type === 'companyCertification') {
+          await counselorStore.handleCompanyTask({
+            taskId: currentTask.value.id,
+            action: handleForm.value.action,
+            reason: handleForm.value.reason
+          })
+        } else if (currentTask.value.type === 'jobAudit') {
+          await counselorStore.handleJobTask({
+            taskId: currentTask.value.id,
+            action: handleForm.value.action,
+            reason: handleForm.value.reason
+          })
+        } else if (currentTask.value.type === 'reportHandling') {
+          await counselorStore.handleReportTask({
+            taskId: currentTask.value.id,
+            action: handleForm.value.action,
+            reason: handleForm.value.reason,
+            behaviorScore: handleForm.value.behaviorScore
+          })
+        }
+        
+        ElMessage.success('任务处理成功')
+        handleTaskDialogVisible.value = false
+        
+        // 重置表单
+        handleForm.value = {
+          action: '',
+          reason: '',
+          behaviorScore: 0
+        }
+        
+        // 刷新任务列表
+        refreshAllData()
+      } catch (error) {
+        ElMessage.error('处理失败：' + (error.message || '未知错误'))
+      }
+    }
+  })
+}
+
+// 获取认证状态
+const getCertificationStatus = (status) => {
+  switch (status) {
+    case 'certified': return '已认证'
+    case 'pending': return '认证中'
+    case 'rejected': return '认证未通过'
+    case 'expired': return '已过期'
+    default: return '未知状态'
+  }
+}
 </script>
 
 <style scoped>

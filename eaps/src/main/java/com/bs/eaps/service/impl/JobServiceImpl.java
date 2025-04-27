@@ -199,36 +199,72 @@ public class JobServiceImpl implements JobService {
         result.put("companyLogo", company != null ? company.getLogoPath() : "");
         result.put("description", job.getDescription());
         result.put("requirement", job.getRequirement());
+        result.put("requirements", job.getRequirement()); // 兼容前端展示
         result.put("location", job.getLocation());
         result.put("salary", job.getSalary());
+        result.put("salaryRange", job.getSalary()); // 兼容前端展示
         result.put("education", job.getEducation());
         result.put("experience", job.getExperience());
         result.put("jobType", job.getJobType());
+        result.put("type", job.getJobType()); // 兼容前端展示
         result.put("headcount", job.getHeadcount());
+        result.put("count", job.getHeadcount()); // 兼容前端展示
         result.put("workTime", job.getWorkTime());
-        // JobPosting中没有这些字段，暂时返回空列表
-        result.put("welfareTags", java.util.Collections.emptyList());
-        result.put("jobTags", java.util.Collections.emptyList());
-        result.put("validUntil", job.getValidUntil());
         result.put("contactPerson", job.getContactPerson());
-        result.put("contactMethod", job.getShowContact() ? job.getContactMethod() : "");
+        result.put("contactMethod", job.getContactMethod());
         result.put("publishedAt", job.getPublishedAt());
+        result.put("publishTime", job.getPublishedAt()); // 兼容前端展示
         result.put("status", job.getStatus());
+        result.put("validUntil", job.getValidUntil());
+        result.put("showContact", job.getShowContact());
 
-        // 企业信息
-        Map<String, Object> companyInfo = new HashMap<>();
+        // 获取企业认证状态
         if (company != null) {
-            companyInfo.put("id", company.getId());
-            companyInfo.put("name", company.getName());
-            companyInfo.put("industry", company.getIndustry());
-            companyInfo.put("size", company.getSize());
-            companyInfo.put("isCertified",
+            result.put("companyVerified",
                     Constants.CertificationStatus.CERTIFIED.equals(company.getCertificationStatus()));
-
-            // TODO: 获取企业评分
-            companyInfo.put("averageRating", 0.0);
+            result.put("companyIndustry", company.getIndustry());
+            result.put("companySize", company.getSize());
+            result.put("companyAddress", company.getAddress());
+            result.put("companyDescription", company.getDescription());
         }
-        result.put("companyInfo", companyInfo);
+
+        // 获取岗位标签
+        try {
+            List<String> jobTags = jobTagRelationService.getTagNamesByJobId(jobId);
+            result.put("jobTags", jobTags);
+            result.put("tags", jobTags); // 兼容前端展示
+        } catch (Exception e) {
+            log.error("获取岗位标签失败: {}", e.getMessage());
+            result.put("jobTags", new ArrayList<>());
+            result.put("tags", new ArrayList<>());
+        }
+
+        // 获取福利标签
+        try {
+            List<String> welfareTags = jobWelfareService.getTagNamesByJobId(jobId);
+            result.put("welfareTags", welfareTags);
+            result.put("welfares", welfareTags); // 兼容前端展示
+            result.put("welfare", welfareTags); // 兼容前端展示
+        } catch (Exception e) {
+            log.error("获取福利标签失败: {}", e.getMessage());
+            result.put("welfareTags", new ArrayList<>());
+            result.put("welfares", new ArrayList<>());
+            result.put("welfare", new ArrayList<>());
+        }
+
+        // 评分信息
+        // TODO: 获取企业评分
+        result.put("averageRating", 0.0);
+        result.put("companyRating", 0.0); // 兼容前端展示
+
+        // 联系信息
+        if (job.getShowContact() && job.getContactPerson() != null) {
+            Map<String, String> contactInfo = new HashMap<>();
+            contactInfo.put("name", job.getContactPerson());
+            contactInfo.put("phone", job.getContactMethod());
+            contactInfo.put("email", ""); // 添加空的email字段，确保前端不会报错
+            result.put("contactInfo", contactInfo);
+        }
 
         return result;
     }
@@ -683,5 +719,23 @@ public class JobServiceImpl implements JobService {
             log.error("获取学生ID失败: userId={}", userId, e);
             return null;
         }
+    }
+
+    /**
+     * 通过岗位ID获取企业ID
+     */
+    @Override
+    public Long getCompanyIdByJobId(Long jobId) {
+        if (jobId == null) {
+            throw new IllegalArgumentException("岗位ID不能为空");
+        }
+
+        JobPosting jobPosting = jobPostingMapper.selectById(jobId);
+        if (jobPosting == null) {
+            log.error("未找到对应的岗位信息，岗位ID: {}", jobId);
+            return null;
+        }
+
+        return jobPosting.getCompanyId();
     }
 }

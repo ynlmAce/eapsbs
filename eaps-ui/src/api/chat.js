@@ -12,10 +12,11 @@ import { handleResponse } from '@/utils/api'
  */
 export function getChatSessions(params = {}) {
   return request({
-    url: '/chat/sessions',
+    url: '/api/chat/sessions',
     method: 'post',
     data: params || {}
-  }).then(handleResponse)
+  })
+  // 注意：移除handleResponse，由调用方自行处理响应格式
 }
 
 /**
@@ -28,10 +29,16 @@ export function getChatSessions(params = {}) {
  */
 export function getChatMessages(sessionId, params = {}) {
   return request({
-    url: `/chat/messages/${sessionId}`,
+    url: '/api/chat/messages',
     method: 'post',
-    data: params || {}
-  }).then(handleResponse)
+    data: {
+      sessionId: sessionId,
+      page: params.page || 1,
+      pageSize: params.pageSize || 20,
+      before: params.before
+    }
+  })
+  // 注意：移除handleResponse，由调用方自行处理响应格式
 }
 
 /**
@@ -44,10 +51,15 @@ export function getChatMessages(sessionId, params = {}) {
  */
 export function sendChatMessage(sessionId, messageData) {
   return request({
-    url: `/chat/message/send/${sessionId}`,
+    url: '/api/chat/send',
     method: 'post',
-    data: messageData || {}
-  }).then(handleResponse)
+    data: {
+      sessionId: sessionId,
+      content: messageData.content,
+      contentType: messageData.contentType || 'text'
+    }
+  })
+  // 注意：移除handleResponse，由调用方自行处理响应格式
 }
 
 /**
@@ -61,15 +73,17 @@ export function uploadChatFile(sessionId, file, contentType = 'file') {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('contentType', contentType)
+  formData.append('sessionId', sessionId)
   
   return request({
-    url: `/chat/file/upload/${sessionId}`,
+    url: '/api/chat/upload',
     method: 'post',
     data: formData,
     headers: {
       'Content-Type': 'multipart/form-data'
     }
-  }).then(handleResponse)
+  })
+  // 注意：移除handleResponse，由调用方自行处理响应格式
 }
 
 /**
@@ -115,7 +129,8 @@ export function createChatSession(type, participantId, relatedJobId, initialMess
     url: '/api/chat/create',
     method: 'post',
     data: sessionData
-  }).then(handleResponse);
+  })
+  // 注意：移除handleResponse，由调用方自行处理响应格式
 }
 
 /**
@@ -128,7 +143,7 @@ export function createChatSession(type, participantId, relatedJobId, initialMess
  */
 export function updateChatSessionStatus(sessionId, statusData) {
   return request({
-    url: `/chat/session/status/${sessionId}`,
+    url: `/api/chat/session/status/${sessionId}`,
     method: 'post',
     data: statusData || {}
   }).then(handleResponse)
@@ -141,7 +156,7 @@ export function updateChatSessionStatus(sessionId, statusData) {
  */
 export function deleteChatMessage(messageId) {
   return request({
-    url: `/chat/message/delete/${messageId}`,
+    url: `/api/chat/message/delete/${messageId}`,
     method: 'post',
     data: {}
   }).then(handleResponse)
@@ -156,7 +171,7 @@ export function deleteChatMessage(messageId) {
  */
 export function reportChatMessage(messageId, reportData) {
   return request({
-    url: `/chat/message/report/${messageId}`,
+    url: `/api/chat/message/report/${messageId}`,
     method: 'post',
     data: reportData || {}
   }).then(handleResponse)
@@ -165,7 +180,7 @@ export function reportChatMessage(messageId, reportData) {
 // 创建学生-企业会话
 export const createStudentCompanySession = (data) => {
   return request({
-    url: '/chat/sessions/student-company',
+    url: '/api/chat/sessions/student-company',
     method: 'post',
     data
   })
@@ -174,7 +189,7 @@ export const createStudentCompanySession = (data) => {
 // 创建学生-辅导员会话
 export const createStudentCounselorSession = (data) => {
   return request({
-    url: '/chat/sessions/student-counselor',
+    url: '/api/chat/sessions/student-counselor',
     method: 'post',
     data
   })
@@ -183,7 +198,7 @@ export const createStudentCounselorSession = (data) => {
 // 创建学生群组
 export const createStudentGroup = (data) => {
   return request({
-    url: '/chat/groups',
+    url: '/api/chat/groups',
     method: 'post',
     data
   })
@@ -192,7 +207,7 @@ export const createStudentGroup = (data) => {
 // 加入学生群组
 export const joinStudentGroup = (groupId) => {
   return request({
-    url: `/chat/groups/${groupId}/members`,
+    url: `/api/chat/groups/${groupId}/members`,
     method: 'post'
   })
 }
@@ -200,7 +215,7 @@ export const joinStudentGroup = (groupId) => {
 // 获取未读消息数
 export const getUnreadCount = () => {
   return request({
-    url: '/chat/messages/unread/count',
+    url: '/api/chat/messages/unread/count',
     method: 'get'
   })
 }
@@ -208,7 +223,7 @@ export const getUnreadCount = () => {
 // 标记消息为已读
 export const markMessageRead = (sessionId) => {
   return request({
-    url: `/chat/sessions/${sessionId}/read`,
+    url: `/api/chat/sessions/${sessionId}/read`,
     method: 'put'
   })
 }
@@ -266,8 +281,20 @@ export function createStudentToCompanyChat(companyId, jobId, initialMessage = ''
  */
 export function getCompanyUserIdByJobId(jobId) {
   return request({
-    url: '/api/company/user-id-by-job',
+    url: '/api/user-id-by-job',
     method: 'post',
     data: { jobId: Number(jobId) }
   }).then(handleResponse);
+}
+
+// 标记会话消息为已读
+export function markSessionRead(sessionId) {
+  return request({
+    url: '/api/chat/read',
+    method: 'post',
+    data: {
+      sessionId
+    }
+  })
+  // 注意：移除handleResponse，由调用方自行处理响应格式
 } 

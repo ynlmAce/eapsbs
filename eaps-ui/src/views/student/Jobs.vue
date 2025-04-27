@@ -79,25 +79,25 @@
       >
         <div class="job-header">
           <h3 class="job-title">{{ job.title }}</h3>
-          <div class="job-salary">{{ formatSalary(job.salaryMin, job.salaryMax) }}</div>
+          <div class="job-salary">{{ job.salaryRange || job.salary }}</div>
         </div>
         <div class="company-info">
           <span class="company-name">{{ job.companyName }}</span>
           <span class="location">{{ job.location }}</span>
         </div>
         <div class="job-tags">
-          <el-tag v-if="job.jobType" size="small" type="info">{{ formatJobType(job.jobType) }}</el-tag>
+          <el-tag v-if="job.jobType || job.type" size="small" type="info">{{ job.jobType || job.type }}</el-tag>
           <el-tag 
-            v-for="tag in job.tags" 
-            :key="tag.id" 
+            v-for="(tag, index) in (job.jobTags || job.tags)" 
+            :key="index" 
             size="small" 
             type="success"
           >
-            {{ tag.name }}
+            {{ typeof tag === 'string' ? tag : tag.name }}
           </el-tag>
         </div>
         <div class="job-footer">
-          <span class="publish-time">{{ formatTime(job.publishTime) }}</span>
+          <span class="publish-time">{{ formatTime(job.publishTime || job.publishedAt) }}</span>
         </div>
       </div>
     </div>
@@ -123,16 +123,16 @@
       <div v-if="selectedJob" class="job-detail">
         <div class="job-header">
           <h2>{{ selectedJob.title }}</h2>
-          <div class="job-salary">{{ formatSalary(selectedJob.salaryMin, selectedJob.salaryMax) }}</div>
+          <div class="job-salary">{{ selectedJob.salaryRange }}</div>
         </div>
 
         <div class="company-info">
           <div class="company-name">{{ selectedJob.companyName }}</div>
           <div class="job-meta">
             <span>{{ selectedJob.location }}</span>
-            <span>{{ formatExperience(selectedJob.experienceRequirement) }}</span>
-            <span>{{ formatEducation(selectedJob.educationRequirement) }}</span>
-            <span>{{ formatJobType(selectedJob.jobType) }}</span>
+            <span>{{ selectedJob.experience }}</span>
+            <span>{{ selectedJob.education }}</span>
+            <span>{{ selectedJob.jobType }}</span>
           </div>
         </div>
 
@@ -143,42 +143,62 @@
           <div class="section-content" v-html="selectedJob.description"></div>
         </div>
 
-        <div class="job-section">
+        <div class="job-section" v-if="selectedJob.requirement">
           <h3>职位要求</h3>
-          <div class="section-content" v-html="selectedJob.requirements"></div>
+          <div class="section-content" v-html="selectedJob.requirement"></div>
         </div>
 
-        <div class="job-section">
-          <h3>岗位职责</h3>
-          <div class="section-content" v-html="selectedJob.responsibilities"></div>
+        <div class="job-section" v-if="selectedJob.workTime">
+          <h3>工作时间</h3>
+          <div class="section-content">{{ selectedJob.workTime }}</div>
         </div>
 
-        <div class="job-section">
+        <div class="job-section" v-if="selectedJob.welfares && selectedJob.welfares.length > 0">
           <h3>福利待遇</h3>
           <div class="welfare-tags">
             <el-tag 
-              v-for="welfare in selectedJob.welfares" 
-              :key="welfare.id"
+              v-for="(welfare, index) in selectedJob.welfares" 
+              :key="index"
               class="welfare-tag" 
               effect="plain"
             >
-              {{ welfare.name }}
+              {{ welfare }}
             </el-tag>
           </div>
         </div>
 
-        <div class="job-section">
-          <h3>联系方式</h3>
-          <div class="contact-info">
-            <p v-if="selectedJob.contactPerson">联系人：{{ selectedJob.contactPerson }}</p>
-            <p v-if="selectedJob.contactEmail">邮箱：{{ selectedJob.contactEmail }}</p>
-            <p v-if="selectedJob.contactPhone">电话：{{ selectedJob.contactPhone }}</p>
+        <div class="job-section" v-if="selectedJob.jobTags && selectedJob.jobTags.length > 0">
+          <h3>岗位标签</h3>
+          <div class="welfare-tags">
+            <el-tag 
+              v-for="(tag, index) in selectedJob.jobTags" 
+              :key="index"
+              class="welfare-tag" 
+              type="success"
+            >
+              {{ tag }}
+            </el-tag>
           </div>
         </div>
 
+        <div class="job-section" v-if="selectedJob.contactPerson || (selectedJob.contactInfo && (selectedJob.contactInfo.email || selectedJob.contactInfo.phone))">
+          <h3>联系方式</h3>
+          <div class="contact-info">
+            <p v-if="selectedJob.contactPerson">联系人：{{ selectedJob.contactPerson }}</p>
+            <p v-if="selectedJob.contactInfo && selectedJob.contactInfo.email">邮箱：{{ selectedJob.contactInfo.email }}</p>
+            <p v-if="selectedJob.contactInfo && selectedJob.contactInfo.phone">电话：{{ selectedJob.contactInfo.phone }}</p>
+            <p v-if="selectedJob.contactMethod && !selectedJob.contactInfo">联系方式：{{ selectedJob.contactMethod }}</p>
+          </div>
+        </div>
+
+        <div class="job-section" v-if="selectedJob.headcount">
+          <h3>招聘人数</h3>
+          <div class="section-content">{{ selectedJob.headcount }}人</div>
+        </div>
+
         <div class="job-footer">
-          <span>发布时间：{{ formatTime(selectedJob.publishTime) }}</span>
-          <span>截止时间：{{ formatTime(selectedJob.deadline) }}</span>
+          <span>发布时间：{{ formatTime(selectedJob.publishTime || selectedJob.publishedAt) }}</span>
+          <span>截止时间：{{ selectedJob.validUntil ? selectedJob.validUntil.split('T')[0] : '未设置' }}</span>
         </div>
 
         <div class="dialog-footer">
@@ -310,6 +330,7 @@ const openJobDetail = async (jobId) => {
     loading.value = true
     const res = await getJobDetail(jobId)
     selectedJob.value = res
+    console.log('职位详情数据结构:', JSON.stringify(res, null, 2))
     jobDetailVisible.value = true
   } catch (error) {
     console.error('获取职位详情失败:', error)

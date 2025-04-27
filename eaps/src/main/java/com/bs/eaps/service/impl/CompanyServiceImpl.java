@@ -507,4 +507,53 @@ public class CompanyServiceImpl implements CompanyService {
 
         return company.getId();
     }
+
+    @Override
+    public Map<String, Object> getCompanyDetailById(Long companyId) {
+        try {
+            if (companyId == null) {
+                throw new IllegalArgumentException("企业ID不能为空");
+            }
+
+            Map<String, Object> result = new HashMap<>();
+
+            // 查询企业基本信息
+            CompanyProfile profile = companyProfileMapper.selectById(companyId);
+            if (profile == null) {
+                throw new RuntimeException("未找到企业信息");
+            }
+
+            // 将企业信息添加到结果集中
+            result.put("id", profile.getId());
+            result.put("name", profile.getName());
+            result.put("unifiedSocialCreditCode", profile.getUnifiedSocialCreditCode());
+            result.put("industry", profile.getIndustry());
+            result.put("size", profile.getSize());
+            result.put("address", profile.getAddress());
+            result.put("description", profile.getDescription());
+            result.put("hrContact", profile.getHrContact());
+            result.put("logoPath", profile.getLogoPath());
+            result.put("certificationStatus", profile.getCertificationStatus());
+            result.put("certificationExpiryDate", profile.getCertificationExpiryDate());
+
+            // 查询企业营业执照信息
+            CompanyLicenseFile licenseFile = companyLicenseFileMapper.selectOne(
+                    new LambdaQueryWrapper<CompanyLicenseFile>()
+                            .eq(CompanyLicenseFile::getCompanyProfileId, companyId)
+                            .orderByDesc(CompanyLicenseFile::getUploadedAt)
+                            .last("LIMIT 1"));
+
+            if (licenseFile != null) {
+                result.put("licensePath", licenseFile.getFilePath());
+                result.put("licenseFileName", licenseFile.getFileName());
+                result.put("licenseFileSize", licenseFile.getFileSize());
+                result.put("licenseFileType", licenseFile.getFileType());
+            }
+
+            return result;
+        } catch (Exception e) {
+            log.error("获取企业详情失败，企业ID：{}", companyId, e);
+            throw new RuntimeException("获取企业详情失败: " + e.getMessage(), e);
+        }
+    }
 }

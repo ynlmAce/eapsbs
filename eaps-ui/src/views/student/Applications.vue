@@ -135,12 +135,12 @@
         
         <div class="rating-item">
           <span class="rating-label">公司环境：</span>
-          <el-rate v-model="ratingForm.companyEnvironmentScore" />
+          <el-rate v-model="ratingForm.workEnvironmentScore" />
         </div>
         
         <div class="rating-item">
           <span class="rating-label">福利兑现：</span>
-          <el-rate v-model="ratingForm.benefitsFulfillmentScore" />
+          <el-rate v-model="ratingForm.welfareDeliveryScore" />
         </div>
         
         <div class="rating-item">
@@ -183,7 +183,7 @@ import { getStudentApplications } from '@/api/student';
 import { submitRating as submitRatingAPI } from '@/api/rating';
 import { createChatSession, getCompanyUserIdByJobId } from '@/api/chat';
 import { withdrawApplication } from '@/api/application';
-import { getJobById } from '@/api/job';
+import { getJobById, getCompanyIdByJobId } from '@/api/job';
 
 const router = useRouter();
 const loading = ref(false);
@@ -205,8 +205,8 @@ const loadingContact = ref(false);
 const ratingForm = reactive({
   jobAuthenticityScore: 0,
   interviewExperienceScore: 0,
-  companyEnvironmentScore: 0,
-  benefitsFulfillmentScore: 0,
+  workEnvironmentScore: 0,
+  welfareDeliveryScore: 0,
   overallScore: 0,
   comment: '',
   isAnonymous: true
@@ -428,8 +428,8 @@ const contactCompany = async (application) => {
     
     console.log('聊天会话创建成功:', sessionResult);
     router.push({
-      name: 'chat-detail',
-      params: { id: sessionResult.sessionId }
+      name: 'StudentChat',
+      query: { sessionId: sessionResult.sessionId }
     });
   } catch (error) {
     console.error('联系企业失败:', error);
@@ -445,8 +445,8 @@ const rateCompany = (application) => {
   // 重置评分表单
   ratingForm.jobAuthenticityScore = 0;
   ratingForm.interviewExperienceScore = 0;
-  ratingForm.companyEnvironmentScore = 0;
-  ratingForm.benefitsFulfillmentScore = 0; 
+  ratingForm.workEnvironmentScore = 0;
+  ratingForm.welfareDeliveryScore = 0; 
   ratingForm.overallScore = 0;
   ratingForm.comment = '';
   ratingForm.isAnonymous = true;
@@ -465,26 +465,59 @@ const submitRating = async () => {
   try {
     submitting.value = true;
     
+    let companyId = selectedApplication.value.companyId;
+    const jobId = selectedApplication.value.jobId;
+    
+    // 如果companyId为空但jobId有值，尝试通过jobId获取companyId
+    if (!companyId && jobId) {
+      console.log('应用信息中没有企业ID，尝试通过岗位ID获取');
+      try {
+        companyId = await getCompanyIdByJobId(jobId);
+        console.log('通过岗位ID获取到企业ID:', companyId);
+      } catch (error) {
+        console.error('通过岗位ID获取企业ID失败:', error);
+        ElMessage.error('获取企业信息失败，无法提交评价');
+        submitting.value = false;
+        return;
+      }
+      
+      if (!companyId) {
+        ElMessage.error('无法获取企业信息，请稍后再试');
+        submitting.value = false;
+        return;
+      }
+    }
+    
+    // 如果仍然没有企业ID，无法继续
+    if (!companyId) {
+      ElMessage.error('企业ID不能为空，无法提交评价');
+      submitting.value = false;
+      return;
+    }
+    
     const ratingData = {
-      companyId: selectedApplication.value.companyId,
-      jobId: selectedApplication.value.jobId,
+      companyId: companyId, // 使用获取到的企业ID
+      jobId: jobId,
       overallScore: ratingForm.overallScore,
       jobAuthenticityScore: ratingForm.jobAuthenticityScore || ratingForm.overallScore,
       interviewExperienceScore: ratingForm.interviewExperienceScore || ratingForm.overallScore,
-      workEnvironmentScore: ratingForm.companyEnvironmentScore || ratingForm.overallScore,
-      welfareDeliveryScore: ratingForm.benefitsFulfillmentScore || ratingForm.overallScore,
+      workEnvironmentScore: ratingForm.workEnvironmentScore || ratingForm.overallScore,
+      welfareDeliveryScore: ratingForm.welfareDeliveryScore || ratingForm.overallScore,
       comment: ratingForm.comment,
       isAnonymous: ratingForm.isAnonymous
     };
     
+    console.log('提交评价数据:', ratingData);
     const res = await submitRatingAPI(ratingData);
     
-    if (res && res.error === 0) {
-      ElMessage.success('评价提交成功，感谢您的反馈！');
-      rateDialogVisible.value = false;
-    } else {
-      ElMessage.error(res?.message || '提交评价失败');
-    }
+console.log('评价提交响应:', res);
+// 判断是否有响应对象，且包含ratingId（成功标志）
+if (res && res.ratingId) {
+  ElMessage.success('评价提交成功，感谢您的反馈！');
+    rateDialogVisible.value = false;
+  }else {
+  ElMessage.error(res?.message || '提交评价失败');
+}
   } catch (error) {
     console.error('提交评价失败:', error);
     ElMessage.error('提交评价失败，请稍后重试');

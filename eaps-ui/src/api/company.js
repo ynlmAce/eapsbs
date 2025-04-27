@@ -225,4 +225,17 @@ export function getBlacklistedStudents(params) {
     method: 'post',
     data: params || {}
   }).then(handleResponse)
+}
+
+/**
+ * 获取企业详情
+ * @param {number} companyId - 企业ID
+ * @returns {Promise} - 返回企业详细信息
+ */
+export function getCompanyDetail(companyId) {
+  return request({
+    url: '/api/company/detail',
+    method: 'post',
+    data: { companyId }
+  }).then(handleResponse)
 } 

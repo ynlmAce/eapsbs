@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getTasksCount, getTasksList, processTask } from '@/api/counselor'
+import { request as api } from '@/api'
 
 export const useCounselorStore = defineStore('counselor', {
   state: () => ({
@@ -131,29 +132,91 @@ export const useCounselorStore = defineStore('counselor', {
       }
     },
     
-    // 获取岗位审核任务列表
-    async fetchJobTasks({ page = 1, pageSize = 10, filters = {} } = {}) {
-      this.setLoading('jobs', true)
+    // 获取所有状态的企业认证任务列表
+    async fetchAllCompanyTasks(params) {
       try {
-        const response = await getTasksList({
-          type: 'jobAudit',
-          page,
-          pageSize,
-          ...filters
+        this.loading.companies = true
+        const response = await api.post('/api/counselor/tasks/all', {
+          type: 'companyCertification',
+          page: params.page || 1,
+          pageSize: params.pageSize || 10,
+          includeAll: true,  // 包含所有状态的任务
+          statusFilter: params.filters?.status || 'all' // 企业认证状态筛选
         })
-        
+
+        this.loading.companies = false
         if (response.error === 0) {
-          this.setJobTasks(response.body.list || [])
-          return response.body
+          this.companyTasks = response.body.list || []
+          return {
+            total: response.body.total || 0,
+            list: this.companyTasks
+          }
         } else {
-          console.error('获取岗位审核任务失败', response.message)
-          return { list: [], total: 0 }
+          console.error('获取企业认证任务失败', response.message)
+          return { total: 0, list: [] }
         }
       } catch (error) {
+        this.loading.companies = false
+        console.error('获取企业认证任务异常', error)
+        return { total: 0, list: [] }
+      }
+    },
+    
+    // 获取岗位审核任务列表
+    async fetchJobTasks(params) {
+      try {
+        this.loading.jobs = true
+        const response = await api.post('/api/counselor/tasks/list', {
+          type: 'jobAudit',
+          page: params.page || 1,
+          pageSize: params.pageSize || 10
+        })
+
+        this.loading.jobs = false
+        if (response.error === 0) {
+          this.jobTasks = response.body.list || []
+          return {
+            total: response.body.total || 0,
+            list: this.jobTasks
+          }
+        } else {
+          console.error('获取岗位审核任务失败', response.message)
+          return { total: 0, list: [] }
+        }
+      } catch (error) {
+        this.loading.jobs = false
         console.error('获取岗位审核任务异常', error)
-        return { list: [], total: 0 }
-      } finally {
-        this.setLoading('jobs', false)
+        return { total: 0, list: [] }
+      }
+    },
+    
+    // 获取所有状态的岗位审核任务列表
+    async fetchAllJobTasks(params) {
+      try {
+        this.loading.jobs = true
+        const response = await api.post('/api/counselor/tasks/all', {
+          type: 'jobAudit',
+          page: params.page || 1,
+          pageSize: params.pageSize || 10,
+          includeAll: true,  // 包含所有状态的任务
+          statusFilter: params.filters?.jobStatus || 'all' // 岗位状态筛选
+        })
+
+        this.loading.jobs = false
+        if (response.error === 0) {
+          this.jobTasks = response.body.list || []
+          return {
+            total: response.body.total || 0,
+            list: this.jobTasks
+          }
+        } else {
+          console.error('获取岗位审核任务失败', response.message)
+          return { total: 0, list: [] }
+        }
+      } catch (error) {
+        this.loading.jobs = false
+        console.error('获取岗位审核任务异常', error)
+        return { total: 0, list: [] }
       }
     },
     

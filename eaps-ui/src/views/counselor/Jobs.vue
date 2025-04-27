@@ -14,7 +14,7 @@
         <el-form-item label="审核状态">
           <el-select v-model="filterForm.status" placeholder="全部" clearable>
             <el-option label="待审核" value="pending"></el-option>
-            <el-option label="已通过" value="approved"></el-option>
+            <el-option label="已通过" value="active"></el-option>
             <el-option label="已驳回" value="rejected"></el-option>
             <el-option label="已结束" value="closed"></el-option>
           </el-select>
@@ -31,11 +31,16 @@
       <template #header>
         <div class="card-header">
           <span>岗位列表</span>
+          <div class="action-buttons">
+            <el-button size="small" type="primary" plain @click="refreshJobTasks">
+              <el-icon><Refresh /></el-icon> 刷新数据
+            </el-button>
+          </div>
           <div class="tabs">
             <el-radio-group v-model="activeTab" size="small" @change="handleTabChange">
               <el-radio-button label="all">全部</el-radio-button>
               <el-radio-button label="pending">待审核</el-radio-button>
-              <el-radio-button label="approved">已通过</el-radio-button>
+              <el-radio-button label="active">已通过</el-radio-button>
               <el-radio-button label="rejected">已驳回</el-radio-button>
               <el-radio-button label="closed">已结束</el-radio-button>
             </el-radio-group>
@@ -50,18 +55,38 @@
         @row-click="handleRowClick"
       >
         <el-table-column prop="id" label="ID" width="80"></el-table-column>
-        <el-table-column prop="title" label="岗位名称" min-width="150"></el-table-column>
-        <el-table-column prop="company" label="发布企业" min-width="150"></el-table-column>
-        <el-table-column prop="location" label="工作地点" width="120"></el-table-column>
-        <el-table-column prop="salary" label="薪资范围" width="120"></el-table-column>
-        <el-table-column prop="createdAt" label="发布时间" width="180"></el-table-column>
+        <el-table-column label="岗位名称" min-width="150">
+          <template #default="scope">
+            {{ scope.row.jobDetails?.title || scope.row.title }}
+          </template>
+        </el-table-column>
+        <el-table-column label="发布企业" min-width="150">
+          <template #default="scope">
+            {{ scope.row.companyName }}
+          </template>
+        </el-table-column>
+        <el-table-column label="工作地点" width="120">
+          <template #default="scope">
+            {{ scope.row.jobDetails?.location || scope.row.location }}
+          </template>
+        </el-table-column>
+        <el-table-column label="薪资范围" width="120">
+          <template #default="scope">
+            {{ scope.row.jobDetails?.salary || scope.row.salary }}
+          </template>
+        </el-table-column>
+        <el-table-column label="发布时间" width="180">
+          <template #default="scope">
+            {{ scope.row.jobDetails?.publishedAt || scope.row.publishedAt || scope.row.createdAt }}
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
             <el-tag
-              :type="getStatusType(scope.row.status)"
+              :type="getStatusType(scope.row.jobDetails?.status || scope.row.status)"
               size="small"
             >
-              {{ getStatusText(scope.row.status) }}
+              {{ getStatusText(scope.row.jobDetails?.status || scope.row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -74,14 +99,14 @@
               @click.stop="viewJob(scope.row)"
             >查看</el-button>
             <el-button 
-              v-if="scope.row.status === 'pending'"
+              v-if="isPendingStatus(scope.row)"
               size="small" 
               type="success" 
               plain
               @click.stop="handleAudit(scope.row, 'approve')"
             >通过</el-button>
             <el-button 
-              v-if="scope.row.status === 'pending'"
+              v-if="isPendingStatus(scope.row)"
               size="small" 
               type="danger" 
               plain
@@ -113,19 +138,23 @@
     >
       <template v-if="currentJob">
         <el-descriptions title="基本信息" :column="2" border>
-          <el-descriptions-item label="岗位名称">{{ currentJob.title }}</el-descriptions-item>
-          <el-descriptions-item label="发布企业">{{ currentJob.company }}</el-descriptions-item>
-          <el-descriptions-item label="工作地点">{{ currentJob.location }}</el-descriptions-item>
-          <el-descriptions-item label="薪资范围">{{ currentJob.salary }}</el-descriptions-item>
-          <el-descriptions-item label="招聘人数">{{ currentJob.count + '人' }}</el-descriptions-item>
-          <el-descriptions-item label="工作类型">{{ currentJob.type }}</el-descriptions-item>
-          <el-descriptions-item label="学历要求">{{ currentJob.education }}</el-descriptions-item>
-          <el-descriptions-item label="经验要求">{{ currentJob.experience }}</el-descriptions-item>
-          <el-descriptions-item label="发布时间">{{ currentJob.createdAt }}</el-descriptions-item>
-          <el-descriptions-item label="截止日期">{{ currentJob.deadline }}</el-descriptions-item>
+          <el-descriptions-item label="岗位名称">{{ currentJob.jobDetails?.title }}</el-descriptions-item>
+          <el-descriptions-item label="发布企业">{{ currentJob.companyName }}</el-descriptions-item>
+          <el-descriptions-item label="工作地点">{{ currentJob.jobDetails?.location }}</el-descriptions-item>
+          <el-descriptions-item label="薪资范围">{{ currentJob.jobDetails?.salary }}</el-descriptions-item>
+          <el-descriptions-item label="招聘人数">{{ currentJob.jobDetails?.headcount }}人</el-descriptions-item>
+          <el-descriptions-item label="工作类型">{{ currentJob.jobDetails?.jobType }}</el-descriptions-item>
+          <el-descriptions-item label="学历要求">{{ currentJob.jobDetails?.education }}</el-descriptions-item>
+          <el-descriptions-item label="经验要求">{{ currentJob.jobDetails?.experience }}</el-descriptions-item>
+          <el-descriptions-item label="工作时间">{{ currentJob.jobDetails?.workTime }}</el-descriptions-item>
+          <el-descriptions-item label="发布时间">{{ currentJob.jobDetails?.publishedAt || currentJob.jobDetails?.createdAt }}</el-descriptions-item>
+          <el-descriptions-item label="有效期至">{{ currentJob.jobDetails?.validUntil }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentJob.jobDetails?.showContact" label="联系信息">
+            {{ currentJob.jobDetails?.contactPerson }} / {{ currentJob.jobDetails?.contactMethod }}
+          </el-descriptions-item>
           <el-descriptions-item label="当前状态">
-            <el-tag :type="getStatusType(currentJob.status)">
-              {{ getStatusText(currentJob.status) }}
+            <el-tag :type="getStatusType(currentJob.jobDetails?.status)">
+              {{ getStatusText(currentJob.jobDetails?.status) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="投递数量">{{ currentJob.applications || 0 }}</el-descriptions-item>
@@ -135,11 +164,11 @@
           <h4>岗位标签</h4>
           <div>
             <el-tag 
-              v-for="tag in currentJob.tags" 
+              v-for="tag in currentJob.jobDetails?.jobTags" 
               :key="tag"
               class="tag-item"
             >{{ tag }}</el-tag>
-            <el-empty v-if="!currentJob.tags || currentJob.tags.length === 0" description="暂无标签" :image-size="60"></el-empty>
+            <el-empty v-if="!currentJob.jobDetails?.jobTags || currentJob.jobDetails?.jobTags.length === 0" description="暂无标签" :image-size="60"></el-empty>
           </div>
         </div>
         
@@ -147,26 +176,26 @@
           <h4>岗位福利</h4>
           <div>
             <el-tag 
-              v-for="welfare in currentJob.welfare" 
+              v-for="welfare in currentJob.jobDetails?.welfareTags" 
               :key="welfare"
               class="tag-item"
               type="success"
             >{{ welfare }}</el-tag>
-            <el-empty v-if="!currentJob.welfare || currentJob.welfare.length === 0" description="暂无福利信息" :image-size="60"></el-empty>
+            <el-empty v-if="!currentJob.jobDetails?.welfareTags || currentJob.jobDetails?.welfareTags.length === 0" description="暂无福利信息" :image-size="60"></el-empty>
           </div>
         </div>
         
         <div class="job-description">
           <h4>岗位描述</h4>
-          <div class="description-content">{{ currentJob.description }}</div>
+          <div class="description-content">{{ currentJob.jobDetails?.description }}</div>
         </div>
         
         <div class="job-requirements">
           <h4>岗位要求</h4>
-          <div class="requirements-content">{{ currentJob.requirements }}</div>
+          <div class="requirements-content">{{ currentJob.jobDetails?.requirement }}</div>
         </div>
         
-        <div v-if="currentJob.status === 'pending'" class="dialog-footer">
+        <div v-if="isPendingStatus(currentJob)" class="dialog-footer">
           <el-form :model="auditForm" ref="auditFormRef" label-width="100px">
             <el-form-item label="审核意见" prop="remarks">
               <el-input
@@ -200,9 +229,9 @@
           </div>
         </div>
         
-        <div v-else-if="currentJob.status === 'rejected'" class="rejection-reason">
+        <div v-else-if="isRejectedStatus(currentJob)" class="rejection-reason">
           <h4>驳回原因</h4>
-          <p>{{ currentJob.rejectReason || '未提供驳回原因' }}</p>
+          <p>{{ currentJob.jobDetails?.rejectReason || '未提供驳回原因' }}</p>
         </div>
       </template>
     </el-dialog>
@@ -213,7 +242,9 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 import { useCounselorStore } from '@/store/counselorStore'
+import { getTasksList } from '@/api/counselor'
 
 // 使用Pinia store
 const counselorStore = useCounselorStore()
@@ -251,50 +282,114 @@ const jobTasks = computed(() => counselorStore.jobTasks)
 const filteredJobList = computed(() => {
   let result = [...jobTasks.value]
   
+  console.log('过滤前的任务列表:', result);
+  
   // 根据活动的Tab过滤
   if (activeTab.value !== 'all') {
-    result = result.filter(job => job.status === activeTab.value)
+    result = result.filter(job => {
+      // 仅使用job_posting表的状态进行筛选
+      const jobStatus = job.jobDetails?.status || job.status || '';
+      
+      // 状态值匹配逻辑
+      if (activeTab.value === 'active') {
+        // 对于已通过标签，显示岗位状态为active/approved/recruiting的记录
+        return ['active', 'approved', 'recruiting'].includes(jobStatus.toLowerCase());
+      } else if (activeTab.value === 'pending') {
+        // 待审核状态
+        return jobStatus.toLowerCase() === 'pending';
+      } else if (activeTab.value === 'rejected') {
+        // 已驳回状态
+        return jobStatus.toLowerCase() === 'rejected';
+      } else if (activeTab.value === 'closed') {
+        // 已结束状态
+        return ['closed', 'ended'].includes(jobStatus.toLowerCase());
+      } else {
+        // 其他状态匹配岗位状态
+        return jobStatus.toLowerCase() === activeTab.value.toLowerCase();
+      }
+    });
   }
   
   // 根据过滤表单过滤
   if (filterForm.title) {
-    result = result.filter(job => 
-      job.title && job.title.toLowerCase().includes(filterForm.title.toLowerCase())
-    )
+    result = result.filter(job => {
+      const title = job.jobDetails?.title || job.title || '';
+      return title.toLowerCase().includes(filterForm.title.toLowerCase());
+    })
   }
   
   if (filterForm.company) {
-    result = result.filter(job => 
-      job.company && job.company.toLowerCase().includes(filterForm.company.toLowerCase())
-    )
+    result = result.filter(job => { 
+      const company = job.companyName || '';
+      return company.toLowerCase().includes(filterForm.company.toLowerCase());
+    })
   }
   
   if (filterForm.status) {
-    result = result.filter(job => job.status === filterForm.status)
+    result = result.filter(job => {
+      // 仅使用job_posting表的状态进行筛选
+      const jobStatus = job.jobDetails?.status || job.status || '';
+      
+      // 状态值匹配逻辑
+      if (filterForm.status === 'active') {
+        // 对于已通过筛选，显示岗位状态为active/approved/recruiting的记录
+        return ['active', 'approved', 'recruiting'].includes(jobStatus.toLowerCase());
+      } else if (filterForm.status === 'pending') {
+        // 待审核状态
+        return jobStatus.toLowerCase() === 'pending';
+      } else if (filterForm.status === 'rejected') {
+        // 已驳回状态
+        return jobStatus.toLowerCase() === 'rejected';
+      } else if (filterForm.status === 'closed') {
+        // 已结束状态
+        return ['closed', 'ended'].includes(jobStatus.toLowerCase());
+      } else {
+        // 其他状态匹配岗位状态
+        return jobStatus.toLowerCase() === filterForm.status.toLowerCase();
+      }
+    });
   }
   
+  console.log('过滤后的任务列表:', result);
   return result
 })
 
 // 获取状态标签类型
 const getStatusType = (status) => {
-  switch (status) {
+  // 打印状态值以便调试
+  console.log('状态值:', status);
+  
+  // 统一转换为小写并去除空格
+  const normalizedStatus = status?.toString().toLowerCase().trim();
+  
+  switch (normalizedStatus) {
+    case 'draft': return 'info'
     case 'pending': return 'warning'
-    case 'approved': return 'success'
+    case 'active': 
+    case 'approved': 
+    case 'recruiting': return 'success'
     case 'rejected': return 'danger'
-    case 'closed': return 'info'
-    default: return ''
+    case 'closed': 
+    case 'ended': return 'info'
+    default: return 'info'
   }
 }
 
 // 获取状态文本
 const getStatusText = (status) => {
-  switch (status) {
+  // 统一转换为小写并去除空格
+  const normalizedStatus = status?.toString().toLowerCase().trim();
+  
+  switch (normalizedStatus) {
+    case 'draft': return '草稿'
     case 'pending': return '待审核'
-    case 'approved': return '已通过'
+    case 'active': 
+    case 'approved': 
+    case 'recruiting': return '已通过'
     case 'rejected': return '已驳回'
-    case 'closed': return '已结束'
-    default: return '未知状态'
+    case 'closed': 
+    case 'ended': return '已结束'
+    default: return status ? `未知(${status})` : '未知状态'
   }
 }
 
@@ -337,6 +432,7 @@ const handleRowClick = (row) => {
 
 // 查看岗位详情
 const viewJob = (job) => {
+    console.log('岗位数据:', job); // 添加这行来查看完整数据结构
   currentJob.value = job
   jobDetailVisible.value = true
   // 重置审核表单
@@ -368,12 +464,28 @@ const handleAudit = async (job, action) => {
       reason = `问题: ${auditForm.problems.join(', ')}${reason ? '\n' + reason : ''}`
     }
     
+    // 设置审核后的状态
+    const status = action === 'approve' ? 'active' : 'rejected'
+    
+    // 获取正确的任务ID
+    const taskId = job.id;
+    
+    // 获取岗位ID
+    const jobId = job.targetItemId || (job.jobDetails ? job.jobDetails.id : null);
+    
+    if (!taskId) {
+      ElMessage.error('无法获取任务ID');
+      return;
+    }
+    
     // 调用store的processTask方法处理任务
     const result = await counselorStore.processTask({
-      taskId: job.id,
+      taskId: taskId,
       type: 'jobAudit',
       action,
-      reason
+      reason,
+      status,
+      jobId
     })
     
     if (result.success) {
@@ -402,7 +514,8 @@ const loadJobTasks = async () => {
     
     // 根据当前tab状态添加筛选条件
     if (activeTab.value !== 'all') {
-      filters.status = activeTab.value
+      // 使用job_posting表的状态进行筛选
+      filters.jobStatus = activeTab.value
     }
     
     // 添加搜索筛选
@@ -415,7 +528,7 @@ const loadJobTasks = async () => {
     }
     
     if (filterForm.status) {
-      filters.status = filterForm.status
+      filters.jobStatus = filterForm.status
     }
     
     // 检查是否有来自工作台的任务ID
@@ -426,11 +539,40 @@ const loadJobTasks = async () => {
       filters.taskId = taskId
     }
     
-    const result = await counselorStore.fetchJobTasks({
+    // 使用新的方法获取所有状态的岗位任务
+    const result = await counselorStore.fetchAllJobTasks({
       page: currentPage.value,
       pageSize: pageSize.value,
       filters
     })
+    
+    console.log('API返回的岗位任务数据:', JSON.stringify(result));
+    console.log('Store中的jobTasks:', JSON.stringify(counselorStore.jobTasks));
+    
+    // 检查不同状态的任务数量
+    const statusCounts = {
+      total: counselorStore.jobTasks.length,
+      pending: 0,
+      active: 0,
+      approved: 0,
+      recruiting: 0,
+      rejected: 0,
+      closed: 0,
+      other: 0
+    };
+    
+    counselorStore.jobTasks.forEach(task => {
+      const status = (task.jobDetails?.status || task.status || '').toLowerCase();
+      if (status === 'pending') statusCounts.pending++;
+      else if (status === 'active') statusCounts.active++;
+      else if (status === 'approved') statusCounts.approved++;
+      else if (status === 'recruiting') statusCounts.recruiting++;
+      else if (status === 'rejected') statusCounts.rejected++;
+      else if (status === 'closed') statusCounts.closed++;
+      else statusCounts.other++;
+    });
+    
+    console.log('不同状态任务数量:', statusCounts);
     
     totalJobs.value = result.total || 0
     
@@ -438,6 +580,7 @@ const loadJobTasks = async () => {
     if (taskId && jobTasks.value.length > 0) {
       const targetJob = jobTasks.value.find(j => j.id.toString() === taskId.toString())
       if (targetJob) {
+        console.log('找到匹配的岗位任务:', JSON.stringify(targetJob));
         viewJob(targetJob)
       }
     }
@@ -447,8 +590,19 @@ const loadJobTasks = async () => {
   }
 }
 
-// 页面加载时初始化数据
-onMounted(() => {
+// 刷新岗位任务列表
+const refreshJobTasks = () => {
+  activeTab.value = 'all';
+  filterForm.title = '';
+  filterForm.company = '';
+  filterForm.status = '';
+  currentPage.value = 1;
+  loadJobTasks();
+  ElMessage.success('刷新成功');
+}
+
+// 初始化函数
+const init = () => {
   // 检查URL参数，设置初始Tab
   if (route.query.status) {
     activeTab.value = route.query.status.toString()
@@ -456,6 +610,11 @@ onMounted(() => {
   
   // 加载数据
   loadJobTasks()
+}
+
+// 页面加载时初始化数据
+onMounted(() => {
+  init();
 })
 
 // 监听路由变化，重新加载数据
@@ -473,6 +632,20 @@ watch(
     }
   }
 )
+
+// 添加状态检查辅助函数
+const isPendingStatus = (job) => {
+  // 使用job_posting表的状态来判断是否为待处理
+  const jobStatus = job.jobDetails?.status || job.status || '';
+  return jobStatus.toLowerCase() === 'pending';
+}
+
+// 添加已驳回状态检查辅助函数
+const isRejectedStatus = (job) => {
+  // 岗位状态为rejected的是已驳回
+  const jobStatus = job.jobDetails?.status || job.status || '';
+  return jobStatus.toLowerCase() === 'rejected';
+}
 </script>
 
 <style scoped>
@@ -498,6 +671,11 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.action-buttons {
+  margin-right: auto;
+  margin-left: 20px;
 }
 
 .pagination {

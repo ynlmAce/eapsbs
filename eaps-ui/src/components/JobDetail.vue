@@ -51,7 +51,7 @@
             <div class="company-basic">
               <el-avatar :size="50" :src="jobData.companyLogo || defaultLogo"></el-avatar>
               <div class="company-name-info">
-                <h3>{{ jobData.companyName }}</h3>
+                <h3 @click="goToCompanyDetail" class="company-name-link">{{ jobData.companyName }}</h3>
                 <div class="company-tags">
                   <el-tag v-if="jobData.companyVerified" type="success" size="small">已认证</el-tag>
                   <el-tag v-if="jobData.companyIndustry" type="info" size="small">{{ jobData.companyIndustry }}</el-tag>
@@ -120,9 +120,12 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
+import { useRouter } from 'vue-router';
 // 实际开发时需要引入真实的API
 // import { getJobDetailById } from '@/api/job';
+import { getJobById } from '@/api/job'; // 添加导入getJobById函数
 
+const router = useRouter();
 const props = defineProps({
   jobId: {
     type: [Number, String],
@@ -153,11 +156,13 @@ const fetchJobDetail = async () => {
   
   loading.value = true;
   try {
-    // 实际开发时需要替换为真实API调用
-    // const res = await getJobDetailById(props.jobId);
-    // jobData.value = res.data;
+    // 使用真实API调用替换模拟数据
+    const res = await getJobById(props.jobId);
+    jobData.value = res;
+    loading.value = false;
     
-    // 模拟数据
+    // 注释掉模拟数据部分
+    /*
     setTimeout(() => {
       jobData.value = {
         id: props.jobId,
@@ -186,11 +191,24 @@ const fetchJobDetail = async () => {
       };
       loading.value = false;
     }, 1000);
+    */
     
   } catch (error) {
     console.error('获取岗位详情失败:', error);
     ElMessage.error('获取岗位详情失败，请稍后重试');
     loading.value = false;
+  }
+};
+
+// 跳转到公司详情页面
+const goToCompanyDetail = () => {
+  if (jobData.value && jobData.value.companyId) {
+    router.push({
+      name: 'StudentCompanyDetail',
+      params: { id: jobData.value.companyId }
+    });
+  } else {
+    ElMessage.warning('无法获取企业信息');
   }
 };
 
@@ -257,7 +275,6 @@ onMounted(() => {
 
 .company-name-info {
   margin-left: 15px;
-  flex: 1;
 }
 
 .company-name-info h3 {
@@ -265,9 +282,17 @@ onMounted(() => {
   font-size: 18px;
 }
 
+.company-name-link {
+  cursor: pointer;
+  color: #409EFF;
+}
+
+.company-name-link:hover {
+  text-decoration: underline;
+}
+
 .company-tags {
-  display: flex;
-  gap: 5px;
+  margin-top: 5px;
 }
 
 .company-rating {

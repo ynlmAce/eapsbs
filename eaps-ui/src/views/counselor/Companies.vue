@@ -47,28 +47,41 @@
         @row-click="handleRowClick"
       >
         <el-table-column prop="id" label="ID" width="80"></el-table-column>
-        <el-table-column prop="name" label="企业名称" min-width="150"></el-table-column>
-        <el-table-column prop="industry" label="所属行业" min-width="120"></el-table-column>
-        <el-table-column prop="size" label="企业规模" width="120"></el-table-column>
-        <el-table-column prop="createdAt" label="注册时间" width="180"></el-table-column>
-        <el-table-column prop="status" label="认证状态" width="100">
+        <el-table-column label="企业名称" min-width="150">
           <template #default="scope">
+            {{ scope.row.companyName || scope.row.companyDetails?.name }}
+          </template>
+        </el-table-column>
+        <el-table-column label="所属行业" min-width="120">
+          <template #default="scope">
+            {{ scope.row.companyDetails?.industry || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="企业规模" width="120">
+          <template #default="scope">
+            {{ scope.row.companyDetails?.size || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="注册时间" width="180">
+          <template #default="scope">
+            {{ scope.row.createdAt || scope.row.companyDetails?.createdAt || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="认证状态" width="100">
+          <template #default="scope">
+            <!-- 尝试记录并使用正确的属性路径读取认证状态 -->
+            <span v-if="false">{{ console.log('当前行状态:', scope.row.status, scope.row.companyDetails?.certificationStatus) }}</span>
             <el-tag
-              :type="getStatusType(scope.row.status)"
+              :type="getStatusType(scope.row.companyDetails?.certificationStatus || scope.row.status)"
               size="small"
             >
-              {{ getStatusText(scope.row.status) }}
+              {{ getStatusText(scope.row.companyDetails?.certificationStatus || scope.row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="certificationDate" label="认证时间" width="180">
+        <el-table-column label="认证到期" width="180">
           <template #default="scope">
-            {{ scope.row.certificationDate || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="expiryDate" label="认证到期" width="180">
-          <template #default="scope">
-            {{ scope.row.expiryDate || '-' }}
+            {{ scope.row.expiryDate || scope.row.companyDetails?.certificationExpiryDate || '-' }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
@@ -80,14 +93,14 @@
               @click.stop="viewCompany(scope.row)"
             >查看</el-button>
             <el-button 
-              v-if="scope.row.status === 'pending'"
+              v-if="(scope.row.status || scope.row.companyDetails?.certificationStatus) === 'pending'"
               size="small" 
               type="success" 
               plain
               @click.stop="handleCertification(scope.row, 'approve')"
             >通过</el-button>
             <el-button 
-              v-if="scope.row.status === 'pending'"
+              v-if="(scope.row.status || scope.row.companyDetails?.certificationStatus) === 'pending'"
               size="small" 
               type="danger" 
               plain
@@ -119,30 +132,31 @@
     >
       <template v-if="currentCompany">
         <el-descriptions title="基本信息" :column="2" border>
-          <el-descriptions-item label="企业名称">{{ currentCompany.name }}</el-descriptions-item>
-          <el-descriptions-item label="统一社会信用代码">{{ currentCompany.code }}</el-descriptions-item>
-          <el-descriptions-item label="所属行业">{{ currentCompany.industry }}</el-descriptions-item>
-          <el-descriptions-item label="企业规模">{{ currentCompany.size }}</el-descriptions-item>
-          <el-descriptions-item label="地址" :span="2">{{ currentCompany.address }}</el-descriptions-item>
-          <el-descriptions-item label="HR联系人">{{ currentCompany.hrContact }}</el-descriptions-item>
-          <el-descriptions-item label="联系方式">{{ currentCompany.contactPhone }}</el-descriptions-item>
-          <el-descriptions-item label="邮箱">{{ currentCompany.email }}</el-descriptions-item>
+          <el-descriptions-item label="企业名称">{{ currentCompany.companyDetails?.name }}</el-descriptions-item>
+          <el-descriptions-item label="统一社会信用代码">{{ currentCompany.companyDetails?.unifiedSocialCreditCode }}</el-descriptions-item>
+          <el-descriptions-item label="所属行业">{{ currentCompany.companyDetails?.industry }}</el-descriptions-item>
+          <el-descriptions-item label="企业规模">{{ currentCompany.companyDetails?.size }}</el-descriptions-item>
+          <el-descriptions-item label="地址" :span="2">{{ currentCompany.companyDetails?.address }}</el-descriptions-item>
+          <el-descriptions-item label="HR联系人">{{ getHrContactInfo().name }}</el-descriptions-item>
+          <el-descriptions-item label="联系方式">{{ getHrContactInfo().phone }}</el-descriptions-item>
+          <el-descriptions-item label="邮箱">{{ getHrContactInfo().email }}</el-descriptions-item>
+          <el-descriptions-item label="工作时间">{{ getHrContactInfo().workTime }}</el-descriptions-item>
           <el-descriptions-item label="认证状态">
-            <el-tag :type="getStatusType(currentCompany.status)">
-              {{ getStatusText(currentCompany.status) }}
+            <el-tag :type="getStatusType(currentCompany.companyDetails?.certificationStatus || currentCompany.status)">
+              {{ getStatusText(currentCompany.companyDetails?.certificationStatus || currentCompany.status) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="公司简介" :span="2">
-            {{ currentCompany.description || '暂无简介' }}
+            {{ currentCompany.companyDetails?.description || '暂无简介' }}
           </el-descriptions-item>
         </el-descriptions>
         
         <div class="company-logo">
           <h4>企业Logo</h4>
           <el-image
-            v-if="currentCompany.logoUrl"
-            :src="currentCompany.logoUrl"
-            :preview-src-list="[currentCompany.logoUrl]"
+            v-if="currentCompany.companyDetails?.logoPath"
+            :src="currentCompany.companyDetails.logoPath"
+            :preview-src-list="[currentCompany.companyDetails.logoPath]"
             fit="contain"
             style="width: 200px; height: 100px;"
           ></el-image>
@@ -152,9 +166,9 @@
         <div class="company-license">
           <h4>营业执照</h4>
           <el-image
-            v-if="currentCompany.licenseUrl"
-            :src="currentCompany.licenseUrl"
-            :preview-src-list="[currentCompany.licenseUrl]"
+            v-if="currentCompany.companyDetails?.licensePath"
+            :src="currentCompany.companyDetails.licensePath"
+            :preview-src-list="[currentCompany.companyDetails.licensePath]"
             fit="contain"
             style="width: 100%; max-height: 300px;"
           ></el-image>
@@ -238,42 +252,75 @@ const filteredCompanyList = computed(() => {
   
   // 根据活动的Tab过滤
   if (activeTab.value !== 'all') {
-    result = result.filter(company => company.status === activeTab.value)
+    result = result.filter(company => {
+      // 使用正确的属性路径获取认证状态
+      const certStatus = company.companyDetails?.certificationStatus || company.status;
+      return certStatus === activeTab.value;
+    });
   }
   
   // 根据过滤表单过滤
   if (filterForm.name) {
-    result = result.filter(company => 
-      company.name && company.name.toLowerCase().includes(filterForm.name.toLowerCase())
-    )
+    result = result.filter(company => {
+      const companyName = company.companyName || company.companyDetails?.name || '';
+      return companyName.toLowerCase().includes(filterForm.name.toLowerCase());
+    });
   }
   
   if (filterForm.status) {
-    result = result.filter(company => company.status === filterForm.status)
+    result = result.filter(company => {
+      // 使用正确的属性路径获取认证状态
+      const certStatus = company.companyDetails?.certificationStatus || company.status;
+      return certStatus === filterForm.status;
+    });
   }
   
-  return result
+  // 输出筛选后的结果数量，方便调试
+  console.log(`筛选条件 - Tab: ${activeTab.value}, 名称: ${filterForm.name}, 状态: ${filterForm.status}`);
+  console.log(`筛选结果数量: ${result.length}`);
+  
+  return result;
 })
 
 // 获取状态标签类型
 const getStatusType = (status) => {
-  switch (status) {
+  // 打印状态值以便调试
+  console.log('企业认证状态值:', status);
+  
+  // 统一转换为小写并去除空格
+  const normalizedStatus = status?.toString().toLowerCase().trim();
+  
+  switch (normalizedStatus) {
     case 'pending': return 'warning'
     case 'certified': return 'success'
     case 'rejected': return 'danger'
     case 'expired': return 'info'
-    default: return ''
+    case 'unknown':
+    case 'null':
+    case 'undefined':
+    case '': return 'info'
+    default: return 'info'
   }
 }
 
 // 获取状态文本
 const getStatusText = (status) => {
-  switch (status) {
+  // 打印状态值以便调试
+  console.log('企业认证状态文本:', status);
+  
+  // 统一转换为小写并去除空格
+  const normalizedStatus = status?.toString().toLowerCase().trim();
+  
+  switch (normalizedStatus) {
     case 'pending': return '待审核'
     case 'certified': return '已认证'
     case 'rejected': return '已驳回'
     case 'expired': return '已过期'
-    default: return '未知状态'
+    case 'unknown': return '未知状态'
+    case 'null':
+    case 'undefined':
+    case '': return '未设置'
+    default: return status ? `未知(${status})` : '未设置'
   }
 }
 
@@ -321,7 +368,14 @@ const handleRowClick = (row) => {
 
 // 查看企业详情
 const viewCompany = (company) => {
+  // 安全检查：确保只有在有效的公司对象时才弹出详情
+  if (!company) {
+    console.warn('尝试查看空的企业数据')
+    return
+  }
+  
   currentCompany.value = company
+  console.log('显示企业详情:', company.companyName || company.companyDetails?.name)
   companyDetailVisible.value = true
 }
 
@@ -406,16 +460,21 @@ const loadCompanyTasks = async () => {
       filters.taskId = taskId
     }
     
-    const result = await counselorStore.fetchCompanyTasks({
+    const result = await counselorStore.fetchAllCompanyTasks({
       page: currentPage.value,
       pageSize: pageSize.value,
       filters
     })
     
+    // 仅在控制台记录数据，不进行其他操作
+    if (counselorStore.companyTasks.length > 0) {
+      console.log('企业数据结构:', counselorStore.companyTasks[0]);
+    }
+    
     totalCompanies.value = result.total || 0
     
-    // 如果有特定的任务ID，自动打开该企业详情
-    if (taskId && companyTasks.value.length > 0) {
+    // 仅当从工作台跳转并指定了特定任务ID时，才自动打开详情
+    if (fromDashboard && taskId && companyTasks.value.length > 0) {
       const targetCompany = companyTasks.value.find(c => c.id.toString() === taskId.toString())
       if (targetCompany) {
         viewCompany(targetCompany)
@@ -434,8 +493,11 @@ onMounted(() => {
     activeTab.value = route.query.status.toString()
   }
   
-  // 加载数据
+  // 加载数据，但不自动打开详情
   loadCompanyTasks()
+  
+  // 仅用于调试
+  console.log('企业页面已加载，路由参数:', route.query)
 })
 
 // 监听路由变化，重新加载数据
@@ -446,6 +508,7 @@ watch(
       activeTab.value = newQuery.status.toString()
     }
     
+    // 仅当明确来自工作台的请求才可能打开详情
     if (newQuery.fromDashboard === 'true') {
       // 重置到第一页
       currentPage.value = 1
@@ -453,6 +516,28 @@ watch(
     }
   }
 )
+
+// 在script部分添加HR联系人信息解析函数
+// 在script setup部分，合适的位置添加以下函数
+const getHrContactInfo = () => {
+  if (!currentCompany.value || !currentCompany.value.companyDetails || !currentCompany.value.companyDetails.hrContact) {
+    return { name: '-', phone: '-', email: '-', workTime: '-' }
+  }
+  
+  try {
+    // 尝试解析JSON字符串
+    const hrContact = JSON.parse(currentCompany.value.companyDetails.hrContact)
+    return {
+      name: hrContact.name || '-',
+      phone: hrContact.phone || '-',
+      email: hrContact.email || '-',
+      workTime: hrContact.workTime || '-'
+    }
+  } catch (error) {
+    console.error('解析HR联系人信息失败:', error)
+    return { name: '-', phone: '-', email: '-', workTime: '-' }
+  }
+}
 </script>
 
 <style scoped>

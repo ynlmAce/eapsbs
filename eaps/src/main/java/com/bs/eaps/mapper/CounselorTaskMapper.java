@@ -22,10 +22,27 @@ public interface CounselorTaskMapper extends BaseMapper<CounselorTask> {
     Integer countByType(@Param("type") String type);
 
     /**
+     * 统计特定类型的所有状态任务数量
+     * 
+     * @param type 任务类型
+     * @return 所有状态任务数量
+     */
+    @Select("SELECT COUNT(*) FROM counselor_task WHERE type = #{type}")
+    Integer countAllByType(@Param("type") String type);
+
+    /**
      * 统计待处理的任务总数
      * 
      * @return 待处理任务总数
      */
     @Select("SELECT COUNT(*) FROM counselor_task WHERE status = 'pending'")
     Integer countPendingTasks();
+
+    /**
+     * 统计所有状态的任务总数
+     * 
+     * @return 所有状态任务总数
+     */
+    @Select("SELECT COUNT(*) FROM counselor_task")
+    Integer countAllTasks();
 }

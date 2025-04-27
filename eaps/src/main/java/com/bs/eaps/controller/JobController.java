@@ -9,8 +9,12 @@ import com.bs.eaps.entity.Company;
 import com.bs.eaps.entity.JobTag;
 import com.bs.eaps.entity.WelfareTag;
 import com.bs.eaps.entity.Application;
+import com.bs.eaps.entity.JobPosting;
+import com.bs.eaps.entity.JobTagRelation;
+import com.bs.eaps.entity.JobWelfare;
 import com.bs.eaps.mapper.CompanyMapper;
 import com.bs.eaps.mapper.ApplicationMapper;
+import com.bs.eaps.mapper.JobPostingMapper;
 import com.bs.eaps.service.JobService;
 import com.bs.eaps.service.JobTagService;
 import com.bs.eaps.service.JobTagRelationService;
@@ -47,6 +51,7 @@ public class JobController {
     private final CompanyMapper companyMapper;
     private final CompanyService companyService;
     private final ApplicationMapper applicationMapper;
+    private final JobPostingMapper jobPostingMapper;
 
     /**
      * 获取岗位列表
@@ -63,21 +68,9 @@ public class JobController {
     public ApiResponse getJobDetail(@RequestBody JobDetailQueryDTO queryDTO) {
         Map<String, Object> jobDetail = (Map<String, Object>) jobService.getJobDetail(queryDTO.getJobId());
 
-        // 获取并添加标签信息
-        try {
-            Long jobId = queryDTO.getJobId();
-
-            // 获取岗位标签
-            List<String> jobTags = jobTagRelationService.getTagNamesByJobId(jobId);
-            jobDetail.put("jobTags", jobTags);
-
-            // 获取福利标签
-            List<String> welfareTags = jobWelfareService.getTagNamesByJobId(jobId);
-            jobDetail.put("welfareTags", welfareTags);
-        } catch (Exception e) {
-            // 记录错误但不影响正常响应
-            log.error("获取标签信息失败", e);
-        }
+        // 不再需要重复获取标签，因为在服务层已经处理
+        // 只保留跟踪日志
+        log.info("获取岗位详情: jobId={}, detail={}", queryDTO.getJobId(), jobDetail);
 
         return ApiResponse.success(jobDetail);
     }
@@ -275,6 +268,105 @@ public class JobController {
         } catch (Exception e) {
             log.error("撤回申请发生异常: applicationId={}", applicationId, e);
             return ApiResponse.businessError("撤回申请失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 通过岗位ID获取企业ID
+     */
+    @PostMapping("/company-id")
+    public ApiResponse getCompanyIdByJobId(@RequestBody Map<String, Object> params) {
+        if (params == null || !params.containsKey("jobId")) {
+            return ApiResponse.error(400, "缺少必要参数：jobId");
+        }
+
+        Long jobId;
+        try {
+            jobId = Long.valueOf(params.get("jobId").toString());
+        } catch (NumberFormatException e) {
+            return ApiResponse.error(400, "无效的jobId格式");
+        }
+
+        Long companyId = jobService.getCompanyIdByJobId(jobId);
+        if (companyId == null) {
+            return ApiResponse.error(404, "未找到对应的企业信息");
+        }
+        return ApiResponse.success(companyId);
+    }
+
+    /**
+     * 删除岗位
+     */
+    @PostMapping("/delete")
+    public ApiResponse deleteJob(@RequestBody Map<String, Object> params) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        log.info("删除岗位请求: userId={}, params={}", userId, params);
+
+        // 参数校验
+        if (params == null || !params.containsKey("jobId")) {
+            return ApiResponse.businessError("缺少必要参数：jobId");
+        }
+
+        Long jobId;
+        try {
+            jobId = Long.valueOf(params.get("jobId").toString());
+        } catch (NumberFormatException e) {
+            return ApiResponse.businessError("无效的jobId格式");
+        }
+
+        // 查询岗位信息
+        JobPosting job = jobPostingMapper.selectById(jobId);
+        if (job == null) {
+            return ApiResponse.businessError("岗位不存在");
+        }
+
+        // 验证权限 - 必须是岗位所属企业的用户才能删除
+        LambdaQueryWrapper<Company> companyQueryWrapper = new LambdaQueryWrapper<>();
+        companyQueryWrapper.eq(Company::getUserId, userId);
+        Company company = companyMapper.selectOne(companyQueryWrapper);
+
+        if (company == null || !company.getId().equals(job.getCompanyId())) {
+            log.error("无权删除岗位: userId={}, jobId={}, companyId={}, jobCompanyId={}",
+                    userId, jobId, company != null ? company.getId() : null, job.getCompanyId());
+            return ApiResponse.businessError("无权删除此岗位");
+        }
+
+        try {
+            // 删除岗位
+            int result = jobPostingMapper.deleteById(jobId);
+
+            if (result > 0) {
+                log.info("岗位删除成功: jobId={}", jobId);
+
+                // 清理相关数据（可选，如标签关联、申请记录等）
+                try {
+                    // 删除岗位标签关联
+                    LambdaQueryWrapper<JobTagRelation> tagQueryWrapper = new LambdaQueryWrapper<>();
+                    tagQueryWrapper.eq(JobTagRelation::getJobId, jobId);
+                    jobTagRelationService.remove(tagQueryWrapper);
+
+                    // 删除岗位福利关联
+                    LambdaQueryWrapper<JobWelfare> welfareQueryWrapper = new LambdaQueryWrapper<>();
+                    welfareQueryWrapper.eq(JobWelfare::getJobId, jobId);
+                    jobWelfareService.remove(welfareQueryWrapper);
+
+                    // 删除相关申请记录
+                    LambdaQueryWrapper<Application> applicationQueryWrapper = new LambdaQueryWrapper<>();
+                    applicationQueryWrapper.eq(Application::getJobId, jobId);
+                    applicationMapper.delete(applicationQueryWrapper);
+                } catch (Exception e) {
+                    log.error("清理岗位相关数据失败: jobId={}", jobId, e);
+                    // 不影响主流程，继续返回成功
+                }
+
+                return ApiResponse.success(true);
+            } else {
+                log.error("岗位删除失败: jobId={}", jobId);
+                return ApiResponse.businessError("岗位删除失败");
+            }
+        } catch (Exception e) {
+            log.error("删除岗位异常: jobId={}", jobId, e);
+            return ApiResponse.systemError("系统异常: " + e.getMessage());
         }
     }
 }

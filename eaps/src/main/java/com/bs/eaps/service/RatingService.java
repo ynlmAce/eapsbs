@@ -11,11 +11,11 @@ public interface RatingService {
     /**
      * 提交企业评价
      * 
-     * @param studentId 学生ID
+     * @param userId    用户ID
      * @param ratingDTO 评价信息
      * @return 提交结果
      */
-    Object submitRating(Long studentId, RatingSubmitDTO ratingDTO);
+    Object submitRating(Long userId, RatingSubmitDTO ratingDTO);
 
     /**
      * 获取企业评价列表

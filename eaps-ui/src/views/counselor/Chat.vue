@@ -1,128 +1,284 @@
 <template>
-  <div class="chat-page">
-    <h2 class="page-title">消息中心</h2>
-    
-    <el-row :gutter="20" class="chat-container">
-      <!-- 会话列表 -->
-      <el-col :span="6">
-        <el-card class="session-list-card">
-          <template #header>
-            <div class="card-header">
-              <span>会话列表</span>
-            </div>
-          </template>
-          
-          <div class="search-box">
-            <el-input v-model="searchQuery" placeholder="搜索会话" clearable />
-          </div>
-          
-          <div class="session-list" v-loading="sessionsLoading">
-            <div
-              v-for="session in filteredSessions"
-              :key="session.id"
-              class="session-item"
-              :class="{ 'active': currentSession && currentSession.id === session.id }"
-              @click="selectSession(session)"
-            >
-              <el-badge :value="session.unreadCount || null" :hidden="!session.unreadCount">
-                <el-avatar :size="40"></el-avatar>
-              </el-badge>
-              <div class="session-info">
-                <div class="session-name">{{ session.title || session.name }}</div>
-                <div class="session-preview">{{ session.lastMessage?.content || '' }}</div>
-              </div>
-              <div class="session-time">{{ formatTime(session.lastActiveAt || session.lastMessage?.sentAt) }}</div>
-            </div>
-            <el-empty v-if="filteredSessions.length === 0" description="暂无会话"></el-empty>
-          </div>
-        </el-card>
-      </el-col>
+  <div class="chat-container">
+    <div class="chat-sidebar">
+      <div class="search-box">
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索会话"
+          prefix-icon="el-icon-search"
+          clearable
+        />
+      </div>
       
-      <!-- 聊天区域 -->
-      <el-col :span="18">
-        <el-card class="chat-area-card" v-if="currentSession">
-          <template #header>
-            <div class="card-header">
-              <span>{{ currentSession.title || currentSession.name }}</span>
-              <div v-if="currentSession.isReadOnly">
-                <el-tag type="info" size="small">只读</el-tag>
+      <div class="session-list">
+        <div v-if="sessionsLoading" class="sessions-loading">
+          <el-skeleton animated :rows="3" />
+        </div>
+        <div v-else-if="filteredSessions.length === 0" class="empty-sessions">
+          <el-empty description="暂无会话" />
+          <el-button class="refresh-button" @click="refreshSessions" type="primary" size="small">
+            刷新会话列表
+          </el-button>
+        </div>
+        <template v-else>
+          <div
+            v-for="session in filteredSessions"
+            :key="session.id"
+            class="session-item"
+            :class="{ 'active': currentSession && currentSession.id === session.id }"
+            @click="selectSession(session)"
+          >
+            <el-badge :value="session.unreadCount || null" :hidden="!session.unreadCount" class="session-badge">
+              <el-avatar :size="40" :src="getSessionAvatar(session)"></el-avatar>
+            </el-badge>
+            <div class="session-info">
+              <div class="session-header">
+                <span class="session-name">{{ session.title || session.name }}</span>
+                <span class="session-time">{{ formatTime(session.lastActiveAt || session.lastMessage?.sentAt) }}</span>
               </div>
-            </div>
-          </template>
-          
-          <div class="message-list" ref="messageListRef" v-loading="messagesLoading">
-            <div v-for="message in messages" :key="message.id" class="message-item" :class="{ 'self': message.senderId === userId }">
-              <div class="message-avatar">
-                <el-avatar :size="36" :src="message.senderAvatar"></el-avatar>
-              </div>
-              <div class="message-content">
-                <div class="message-sender">{{ message.senderName }} <span class="message-time">{{ formatTime(message.sentAt) }}</span></div>
-                <div class="message-bubble">
-                  <span v-if="message.contentType === 'text'">{{ message.content }}</span>
-                  <img v-else-if="message.contentType === 'image'" :src="message.filePath" class="message-image" />
-                  <div v-else-if="message.contentType === 'file'" class="message-file">
-                    <i class="el-icon-document"></i>
-                    <a :href="message.filePath" target="_blank">{{ message.content }}</a>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-if="messages.length === 0" class="empty-messages">
-              <el-empty description="暂无消息"></el-empty>
+              <div class="session-message">{{ session.lastMessage?.content || '' }}</div>
             </div>
           </div>
-          
-          <div class="message-input" v-if="!currentSession.isReadOnly">
-            <el-input
-              v-model="messageText"
-              type="textarea"
-              :rows="3"
-              placeholder="输入消息..."
-              resize="none"
-              @keyup.enter.exact.prevent="sendMessage"
-            ></el-input>
-            <div class="input-actions">
-              <el-button type="primary" :disabled="!messageText.trim()" @click="sendMessage">发送</el-button>
-            </div>
+          <div class="session-actions">
+            <el-button class="refresh-button" @click="refreshSessions" type="primary" size="small" text>
+              刷新会话列表
+            </el-button>
           </div>
-          
-          <div class="readonly-notice" v-else>
-            <el-alert title="此会话已归档，无法发送新消息" type="info" :closable="false" />
+        </template>
+      </div>
+    </div>
+    
+    <div class="chat-main">
+      <template v-if="currentSession">
+        <div class="chat-header">
+          <div class="header-title">
+            {{ currentSession.title || currentSession.name }}
+            <el-tag v-if="currentSession.isReadOnly" size="small" type="info">只读</el-tag>
           </div>
-        </el-card>
+          <div class="header-actions">
+            <el-button size="small" @click="showSessionInfo = true">查看信息</el-button>
+          </div>
+        </div>
         
-        <el-empty v-else description="请选择一个会话" class="no-session-placeholder"></el-empty>
-      </el-col>
-    </el-row>
+        <div class="chat-messages" ref="messageListRef">
+          <!-- 错误状态显示 -->
+          <div v-if="chatError" class="chat-error-container">
+            <el-alert
+              title="加载失败"
+              :description="errorMessage"
+              type="error"
+              show-icon
+              center
+              :closable="false"
+            />
+            <el-button class="retry-button" type="primary" @click="retryLoad">重试</el-button>
+          </div>
+          
+          <div v-else-if="messages.length === 0" class="empty-messages">
+            <el-empty description="暂无消息"></el-empty>
+          </div>
+          
+          <div v-else v-for="(message, index) in messages" :key="message.id" class="message-wrapper">
+            <div class="message-time" v-if="showMessageTime(message, index)">
+              {{ formatFullTime(message.sentAt) }}
+            </div>
+            <div class="message" :class="{ 'message-self': message.senderId === userId, 'message-other': message.senderId !== userId }">
+              <el-avatar 
+                v-if="message.senderId !== userId" 
+                :size="30" 
+                :src="message.senderAvatar"
+                class="message-avatar"
+              ></el-avatar>
+              
+              <div class="message-content">
+                <template v-if="message.contentType === 'text'">
+                  <div class="message-text">{{ message.content }}</div>
+                </template>
+                
+                <template v-else-if="message.contentType === 'image'">
+                  <div class="message-image">
+                    <el-image
+                      :src="message.filePath"
+                      :preview-src-list="[message.filePath]"
+                      fit="cover"
+                      lazy
+                    ></el-image>
+                  </div>
+                </template>
+                
+                <template v-else-if="message.contentType === 'file'">
+                  <div class="message-file">
+                    <i class="el-icon-document"></i>
+                    <a :href="message.filePath" target="_blank">{{ message.fileName || message.content || '文件' }}</a>
+                  </div>
+                </template>
+              </div>
+              
+              <el-avatar 
+                v-if="message.senderId === userId" 
+                :size="30" 
+                :src="message.senderAvatar || userAvatar"
+                class="message-avatar"
+              ></el-avatar>
+            </div>
+          </div>
+          
+          <div class="loading-more" v-if="hasMoreMessages">
+            <el-button type="text" @click="loadMoreMessages" :loading="loadingMore">加载更多消息</el-button>
+          </div>
+        </div>
+        
+        <div class="chat-input" v-if="!currentSession.isReadOnly">
+          <div class="input-toolbar">
+            <el-tooltip content="发送图片" placement="top">
+              <el-button size="small" @click="triggerImageUpload">
+                <i class="el-icon-picture"></i>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip content="发送文件" placement="top">
+              <el-button size="small" @click="triggerFileUpload">
+                <i class="el-icon-document"></i>
+              </el-button>
+            </el-tooltip>
+            <input 
+              type="file" 
+              ref="imageInput" 
+              accept="image/*" 
+              style="display: none"
+              @change="handleImageUpload"
+            />
+            <input 
+              type="file" 
+              ref="fileInput" 
+              style="display: none"
+              @change="handleFileUpload"
+            />
+          </div>
+          
+          <el-input
+            v-model="messageText"
+            type="textarea"
+            :rows="3"
+            placeholder="输入消息..."
+            resize="none"
+            @keyup.enter.exact.prevent="sendMessage"
+          ></el-input>
+          <div class="input-actions">
+            <el-button type="primary" :disabled="!messageText.trim()" @click="sendMessage">发送</el-button>
+          </div>
+        </div>
+        
+        <div class="readonly-notice" v-else>
+          <el-alert title="此会话已归档，无法发送新消息" type="info" :closable="false" />
+        </div>
+      </template>
+      
+      <div v-else class="no-session">
+        <el-empty description="选择一个会话开始聊天"></el-empty>
+        <el-button v-if="filteredSessions.length > 0" class="retry-button" type="primary" @click="autoSelectFirstSession">
+          自动选择会话
+        </el-button>
+      </div>
+    </div>
+    
+    <!-- 会话信息侧栏 -->
+    <el-drawer
+      v-model="showSessionInfo"
+      title="会话信息"
+      size="30%"
+      :before-close="handleCloseSessionInfo"
+      direction="rtl"
+    >
+      <div v-if="currentSession" class="session-detail">
+        <div class="detail-header">
+          <el-avatar :size="80" :src="getSessionAvatar(currentSession)"></el-avatar>
+          <h3>{{ currentSession.title || currentSession.name }}</h3>
+          <el-tag size="small">{{ getSessionTypeText(currentSession.type) }}</el-tag>
+        </div>
+        
+        <div class="detail-item">
+          <span class="detail-label">会话类型：</span>
+          <span class="detail-value">{{ getSessionTypeText(currentSession.type) }}</span>
+        </div>
+        
+        <div class="detail-actions">
+          <el-popconfirm
+            title="确定要删除此会话吗？"
+            @confirm="deleteSession(currentSession.id)"
+          >
+            <template #reference>
+              <el-button type="danger" plain>删除会话</el-button>
+            </template>
+          </el-popconfirm>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { getChatSessions, getChatMessages, sendChatMessage, markMessageRead } from '@/api/chat'
+import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElLoading } from 'element-plus'
+import { getChatSessions, getChatMessages, sendChatMessage, markMessageRead, uploadChatFile } from '@/api/chat'
 
-// 会话列表数据
-const sessionsLoading = ref(false)
-const messagesLoading = ref(false)
-const sessionList = ref([])
+// 路由和状态管理
+const route = useRoute()
+const router = useRouter()
 const searchQuery = ref('')
+const sessionList = ref([])
+const sessionsLoading = ref(false)
 const currentSession = ref(null)
-
-// 消息相关数据
 const messages = ref([])
 const messageText = ref('')
 const messageListRef = ref(null)
 const userId = ref(parseInt(localStorage.getItem('userId') || '0'))
+const userAvatar = ref(localStorage.getItem('userAvatar') || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png')
+const userName = ref(localStorage.getItem('userName') || '辅导员')
+const loadRetryCount = ref(0)
+const MAX_RETRIES = 3
+const showSessionInfo = ref(false)
+const chatError = ref(false)
+const errorMessage = ref('')
+const hasMoreMessages = ref(false)
+const loadingMore = ref(false)
+const imageInput = ref(null)
+const fileInput = ref(null)
+let autoRetryTimer = null
 
 // 过滤后的会话列表
 const filteredSessions = computed(() => {
   if (!searchQuery.value) return sessionList.value
   
+  const keyword = searchQuery.value.toLowerCase()
   return sessionList.value.filter(session => 
-    (session.title || session.name).toLowerCase().includes(searchQuery.value.toLowerCase())
+    (session.title || session.name || '').toLowerCase().includes(keyword) || 
+    (session.lastMessage?.content || '').toLowerCase().includes(keyword)
   )
 })
+
+// 获取会话头像
+const getSessionAvatar = (session) => {
+  if (session.participantType === 'student') {
+    return session.participantAvatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+  } else if (session.participantType === 'company') {
+    return session.participantAvatar || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+  } else {
+    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+  }
+}
+
+// 获取会话类型显示文本
+const getSessionTypeText = (type) => {
+  const typeMap = {
+    'SE': '学生-企业会话',
+    'SC': '学生-辅导员会话',
+    'SS': '学生群组',
+    'student': '学生',
+    'company': '企业'
+  }
+  return typeMap[type] || '未知类型'
+}
 
 // 格式化时间
 const formatTime = (timestamp) => {
@@ -130,42 +286,233 @@ const formatTime = (timestamp) => {
   
   const date = new Date(timestamp)
   const now = new Date()
+  const diff = now - date
   
-  // 如果是今天
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  // 今天内的消息显示时分
+  if (diff < 24 * 60 * 60 * 1000 && date.getDate() === now.getDate()) {
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
   }
   
-  // 其他情况
-  return date.toLocaleDateString()
+  // 昨天的消息显示"昨天"
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.getDate() === yesterday.getDate() && date.getMonth() === yesterday.getMonth() && date.getFullYear() === yesterday.getFullYear()) {
+    return '昨天'
+  }
+  
+  // 当年内的其他日期显示月日
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
+  }
+  
+  // 其他情况，显示年月日
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
+}
+
+// 格式化完整时间
+const formatFullTime = (timestamp) => {
+  if (!timestamp) return ''
+  
+  const date = new Date(timestamp)
+  const now = new Date()
+  
+  // 今天内的消息显示时分
+  if (date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
+    return `今天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+  }
+  
+  // 昨天的消息
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.getDate() === yesterday.getDate() && date.getMonth() === yesterday.getMonth() && date.getFullYear() === yesterday.getFullYear()) {
+    return `昨天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+  }
+  
+  // 其他日期
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+}
+
+// 判断是否显示消息时间
+const showMessageTime = (message, index) => {
+  if (index === 0) return true
+  
+  const prevMessage = messages.value[index - 1]
+  const currentTime = new Date(message.sentAt).getTime()
+  const prevTime = new Date(prevMessage.sentAt).getTime()
+  
+  // 如果两条消息间隔超过5分钟，显示时间
+  return currentTime - prevTime > 5 * 60 * 1000
 }
 
 // 获取会话列表
-const fetchSessions = async () => {
+const fetchSessions = async (fromRetry = false) => {
+  if (sessionsLoading.value && !fromRetry) return
+  
   sessionsLoading.value = true
+  console.log('开始加载会话列表，是否来自重试:', fromRetry)
+  
   try {
     const response = await getChatSessions()
+    
     if (response && response.list) {
+      console.log('获取到会话列表:', response.list)
       sessionList.value = response.list
+      
+      // 重置重试计数
+      loadRetryCount.value = 0
+      
+      // 处理URL中的会话ID
+      handleSessionFromUrl()
+      
+      // 显示明确成功消息
+      if (fromRetry) {
+        ElMessage.success('会话列表已刷新')
+      }
+    } else {
+      throw new Error('获取会话列表失败')
     }
   } catch (error) {
     console.error('获取会话列表失败:', error)
-    ElMessage.error('获取会话列表失败')
+    ElMessage.error('获取会话列表失败，请稍后重试')
+    handleLoadError()
   } finally {
     sessionsLoading.value = false
   }
 }
 
-// 获取特定会话的消息
-const fetchMessages = async (sessionId) => {
+// 处理从URL加载会话逻辑
+const handleSessionFromUrl = async () => {
+  // 如果有query参数，选择对应的会话
+  const { sessionId } = route.query
+  if (sessionId) {
+    const sessionIdNum = parseInt(sessionId, 10)
+    if (!isNaN(sessionIdNum)) {
+      const session = sessionList.value.find(s => s.id === sessionIdNum)
+      if (session) {
+        // 使用延迟确保DOM已渲染完成
+        setTimeout(() => {
+          selectSession(session)
+        }, 100)
+        return
+      } else if (sessionList.value.length > 0) {
+        // 如果有会话但没找到指定ID，选择第一个会话
+        setTimeout(() => {
+          autoSelectFirstSession()
+        }, 100)
+      }
+    }
+  }
+  
+  // 如果没有URL参数但有会话，选择第一个
+  if (sessionList.value.length > 0) {
+    // 没有sessionId参数时，自动选择第一个会话
+    autoSelectFirstSession()
+  }
+}
+
+// 自动选择第一个会话
+const autoSelectFirstSession = () => {
+  if (sessionList.value.length > 0) {
+    nextTick(() => {
+      selectSession(sessionList.value[0])
+    })
+  } else {
+    ElMessage.warning('暂无可用会话')
+  }
+}
+
+// 处理加载错误
+const handleLoadError = () => {
+  loadRetryCount.value++
+  
+  if (loadRetryCount.value <= MAX_RETRIES) {
+    console.log(`加载失败，${loadRetryCount.value}秒后自动重试...`)
+    
+    if (autoRetryTimer) {
+      clearTimeout(autoRetryTimer)
+    }
+    
+    autoRetryTimer = setTimeout(() => {
+      fetchSessions(true)
+    }, loadRetryCount.value * 1000)
+  } else {
+    console.error('多次重试失败，请手动刷新')
+    ElMessage.error('加载失败，请手动刷新页面')
+  }
+}
+
+// 手动刷新会话列表
+const refreshSessions = async () => {
+  // 清除当前会话
+  currentSession.value = null
   messages.value = []
-  messagesLoading.value = true
+  chatError.value = false
+  
+  // 重新加载会话
+  await fetchSessions(true)
+}
+
+// 选择会话
+const selectSession = (session) => {
+  // 防止重复选择相同会话
+  if (currentSession.value && currentSession.value.id === session.id) return
   
   try {
-    const response = await getChatMessages(sessionId)
+    currentSession.value = session
+    messages.value = []
+    hasMoreMessages.value = false
+    chatError.value = false
+    
+    // 更新URL参数，但不触发新的导航
+    if (route.query.sessionId !== String(session.id)) {
+      router.replace({
+        query: { ...route.query, sessionId: session.id }
+      })
+    }
+    
+    // 加载会话消息
+    fetchMessages(session.id)
+  } catch (error) {
+    console.error('选择会话失败:', error)
+    ElMessage.error('选择会话失败，请重试')
+  }
+}
+
+// 获取特定会话的消息
+const fetchMessages = async (sessionId, isLoadMore = false) => {
+  if (!sessionId) return
+  
+  messages.value = isLoadMore ? messages.value : []
+  const loadingInstance = isLoadMore ? null : ElLoading.service({
+    target: messageListRef.value,
+    text: '加载消息中...'
+  })
+  
+  try {
+    // 构建查询参数
+    const params = {
+      page: 1,
+      pageSize: 20,
+      before: isLoadMore && messages.value.length > 0 ? messages.value[0].id : undefined
+    }
+    
+    const response = await getChatMessages(sessionId, params)
     
     if (response && response.list) {
-      messages.value = response.list
+      const newMessages = response.list.map(msg => ({
+        ...msg,
+        senderAvatar: msg.senderAvatar || getDefaultAvatar(msg.senderType)
+      }))
+      
+      if (isLoadMore) {
+        // 在现有消息前添加更多消息
+        messages.value = [...newMessages, ...messages.value]
+      } else {
+        // 设置消息列表
+        messages.value = newMessages
+      }
+      
+      hasMoreMessages.value = response.hasMore || false
       
       // 更新会话未读消息数，标记为已读
       if (currentSession.value) {
@@ -175,21 +522,65 @@ const fetchMessages = async (sessionId) => {
           sessionList.value[index].unreadCount = 0
         }
       }
+      
+      // 重置错误状态
+      chatError.value = false
+      errorMessage.value = ''
+    } else {
+      throw new Error('获取消息失败')
     }
   } catch (error) {
     console.error('获取消息失败:', error)
-    ElMessage.error('获取消息失败')
+    ElMessage.error('获取消息失败，请稍后重试')
+    chatError.value = true
+    errorMessage.value = '获取消息失败，请稍后重试'
   } finally {
-    messagesLoading.value = false
+    if (loadingInstance) {
+      loadingInstance.close()
+    }
+    
     // 滚动到底部
-    scrollToBottom()
+    if (!isLoadMore) {
+      scrollToBottom()
+    }
   }
 }
 
-// 选择会话
-const selectSession = (session) => {
-  currentSession.value = session
-  fetchMessages(session.id)
+// 重试加载函数
+const retryLoad = () => {
+  chatError.value = false
+  errorMessage.value = ''
+  
+  if (currentSession.value) {
+    // 如果会话存在，重新加载消息
+    fetchMessages(currentSession.value.id)
+  } else {
+    // 如果会话不存在，重新加载会话列表
+    fetchSessions(true)
+  }
+}
+
+// 加载更多消息
+const loadMoreMessages = () => {
+  if (loadingMore.value || !hasMoreMessages.value || !currentSession.value) return
+  loadingMore.value = true
+  
+  fetchMessages(currentSession.value.id, true).finally(() => {
+    loadingMore.value = false
+  })
+}
+
+// 根据发送者类型获取默认头像
+const getDefaultAvatar = (senderType) => {
+  if (senderType === 'student') {
+    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+  } else if (senderType === 'company') {
+    return 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+  } else if (senderType === 'counselor') {
+    return 'https://cube.elemecdn.com/9/c2/f0ee8a3c7c9638a54940382568c9dpng.png'
+  } else {
+    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+  }
 }
 
 // 发送消息
@@ -197,46 +588,256 @@ const sendMessage = async () => {
   if (!messageText.value.trim() || !currentSession.value || currentSession.value.isReadOnly) return
   
   try {
+    // 构建临时消息，立即显示在界面上
+    const tempMessage = {
+      id: 'temp-' + Date.now(),
+      sessionId: currentSession.value.id,
+      senderId: userId.value,
+      senderType: 'counselor',
+      senderName: userName.value,
+      senderAvatar: userAvatar.value,
+      content: messageText.value.trim(),
+      contentType: 'text',
+      sentAt: new Date().toISOString(),
+      status: 'sending'
+    }
+    
+    // 添加到消息列表
+    messages.value.push(tempMessage)
+    
+    // 清空输入框
+    const content = messageText.value.trim()
+    messageText.value = ''
+    
+    // 滚动到底部
+    scrollToBottom()
+    
     // 发送消息到服务器
-    const result = await sendChatMessage(currentSession.value.id, messageText.value)
+    const messageData = {
+      content: content,
+      contentType: 'text'
+    }
+    const result = await sendChatMessage(currentSession.value.id, messageData)
     
     if (result) {
-      // 添加到消息列表
-      const newMessage = {
-        id: result.messageId,
-        sessionId: currentSession.value.id,
-        senderId: userId.value,
-        senderName: localStorage.getItem('userName') || '辅导员',
-        content: messageText.value,
-        contentType: 'text',
-        sentAt: result.sentAt || new Date().toISOString()
+      // 更新临时消息
+      const index = messages.value.findIndex(m => m.id === tempMessage.id)
+      if (index !== -1) {
+        messages.value[index].id = result.messageId || result.id
+        messages.value[index].status = 'sent'
+        messages.value[index].sentAt = result.sentAt || tempMessage.sentAt
       }
-      
-      messages.value.push(newMessage)
       
       // 更新会话列表中的最后一条消息
-      const index = sessionList.value.findIndex(session => session.id === currentSession.value.id)
-      if (index !== -1) {
-        sessionList.value[index].lastMessage = {
-          content: messageText.value,
-          sentAt: newMessage.sentAt
+      const sessionIndex = sessionList.value.findIndex(session => session.id === currentSession.value.id)
+      if (sessionIndex !== -1) {
+        sessionList.value[sessionIndex].lastMessage = {
+          content: content,
+          sentAt: new Date().toISOString()
         }
-        sessionList.value[index].lastActiveAt = newMessage.sentAt
+        sessionList.value[sessionIndex].lastActiveAt = new Date().toISOString()
         
         // 将当前会话移到顶部
-        const currentSessionData = sessionList.value.splice(index, 1)[0]
+        const currentSessionData = sessionList.value.splice(sessionIndex, 1)[0]
         sessionList.value.unshift(currentSessionData)
       }
-      
-      // 清空输入框
-      messageText.value = ''
-      
-      // 滚动到底部
-      scrollToBottom()
     }
   } catch (error) {
     console.error('发送消息失败:', error)
-    ElMessage.error('发送消息失败')
+    ElMessage.error('发送消息失败，请重试')
+    
+    // 标记临时消息为失败状态
+    const index = messages.value.findIndex(m => m.id === 'temp-' + Date.now())
+    if (index !== -1) {
+      messages.value[index].status = 'failed'
+    }
+  }
+}
+
+// 触发图片上传
+const triggerImageUpload = () => {
+  if (imageInput.value) {
+    imageInput.value.click()
+  }
+}
+
+// 处理图片上传
+const handleImageUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件')
+    return
+  }
+  
+  // 检查文件大小
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error('图片大小不能超过5MB')
+    return
+  }
+  
+  try {
+    // 创建临时消息
+    const tempMessage = {
+      id: 'temp-' + Date.now(),
+      sessionId: currentSession.value.id,
+      senderId: userId.value,
+      senderType: 'counselor',
+      senderName: userName.value,
+      senderAvatar: userAvatar.value,
+      content: URL.createObjectURL(file),
+      contentType: 'image',
+      sentAt: new Date().toISOString(),
+      status: 'uploading'
+    }
+    
+    // 添加到消息列表
+    messages.value.push(tempMessage)
+    scrollToBottom()
+    
+    // 上传图片
+    const res = await uploadChatFile(currentSession.value.id, file, 'image')
+    
+    if (res && res.fileUrl) {
+      // 发送图片消息
+      const messageData = {
+        content: res.fileUrl,
+        contentType: 'image'
+      }
+      const msgRes = await sendChatMessage(currentSession.value.id, messageData)
+      
+      // 更新临时消息
+      const index = messages.value.findIndex(m => m.id === tempMessage.id)
+      if (index !== -1) {
+        messages.value[index].id = msgRes.messageId
+        messages.value[index].status = 'sent'
+        messages.value[index].filePath = res.fileUrl
+        messages.value[index].content = null
+      }
+      
+      // 更新会话列表
+      updateSessionLastMessage('[图片]')
+      
+      ElMessage.success('图片发送成功')
+    } else {
+      throw new Error('图片上传失败')
+    }
+  } catch (error) {
+    console.error('上传图片失败:', error)
+    ElMessage.error('上传图片失败，请稍后重试')
+    
+    // 移除临时消息
+    const index = messages.value.findIndex(m => m.id === 'temp-' + Date.now())
+    if (index !== -1) {
+      messages.value.splice(index, 1)
+    }
+  } finally {
+    // 清空文件输入框，方便下次选择相同文件
+    if (imageInput.value) {
+      imageInput.value.value = ''
+    }
+  }
+}
+
+// 触发文件上传
+const triggerFileUpload = () => {
+  if (fileInput.value) {
+    fileInput.value.click()
+  }
+}
+
+// 处理文件上传
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  // 检查文件大小
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过10MB')
+    return
+  }
+  
+  try {
+    // 创建临时消息
+    const tempMessage = {
+      id: 'temp-' + Date.now(),
+      sessionId: currentSession.value.id,
+      senderId: userId.value,
+      senderType: 'counselor',
+      senderName: userName.value,
+      senderAvatar: userAvatar.value,
+      content: file.name,
+      fileName: file.name,
+      contentType: 'file',
+      sentAt: new Date().toISOString(),
+      status: 'uploading'
+    }
+    
+    // 添加到消息列表
+    messages.value.push(tempMessage)
+    scrollToBottom()
+    
+    // 上传文件
+    const res = await uploadChatFile(currentSession.value.id, file, 'file')
+    
+    if (res && res.fileUrl) {
+      // 发送文件消息
+      const messageData = {
+        content: res.fileUrl,
+        contentType: 'file',
+        fileName: file.name
+      }
+      const msgRes = await sendChatMessage(currentSession.value.id, messageData)
+      
+      // 更新临时消息
+      const index = messages.value.findIndex(m => m.id === tempMessage.id)
+      if (index !== -1) {
+        messages.value[index].id = msgRes.messageId
+        messages.value[index].status = 'sent'
+        messages.value[index].filePath = res.fileUrl
+      }
+      
+      // 更新会话列表
+      updateSessionLastMessage(`[文件: ${file.name}]`)
+      
+      ElMessage.success('文件发送成功')
+    } else {
+      throw new Error('文件上传失败')
+    }
+  } catch (error) {
+    console.error('上传文件失败:', error)
+    ElMessage.error('上传文件失败，请稍后重试')
+    
+    // 移除临时消息
+    const index = messages.value.findIndex(m => m.id === 'temp-' + Date.now())
+    if (index !== -1) {
+      messages.value.splice(index, 1)
+    }
+  } finally {
+    // 清空文件输入框，方便下次选择相同文件
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+  }
+}
+
+// 更新会话列表中的最后一条消息
+const updateSessionLastMessage = (messageText) => {
+  if (!currentSession.value) return
+  
+  const index = sessionList.value.findIndex(s => s.id === currentSession.value.id)
+  if (index !== -1) {
+    sessionList.value[index].lastMessage = {
+      content: messageText,
+      sentAt: new Date().toISOString()
+    }
+    sessionList.value[index].lastActiveAt = new Date().toISOString()
+    
+    // 将会话移到顶部
+    const currentSessionData = sessionList.value.splice(index, 1)[0]
+    sessionList.value.unshift(currentSessionData)
   }
 }
 
@@ -249,47 +850,74 @@ const scrollToBottom = () => {
   })
 }
 
-// 监听消息变化，自动滚动到底部
-watch(messages, () => {
-  scrollToBottom()
-})
+// 关闭会话信息侧栏
+const handleCloseSessionInfo = () => {
+  showSessionInfo.value = false
+}
 
-// 页面加载时获取数据
+// 删除会话
+const deleteSession = async (sessionId) => {
+  try {
+    // 模拟删除成功
+    setTimeout(() => {
+      const index = sessionList.value.findIndex(s => s.id === sessionId)
+      if (index !== -1) {
+        sessionList.value.splice(index, 1)
+      }
+      
+      if (currentSession.value && currentSession.value.id === sessionId) {
+        currentSession.value = null
+        messages.value = []
+      }
+      
+      showSessionInfo.value = false
+      ElMessage.success('会话已删除')
+      
+      // 如果还有其他会话，自动选择第一个
+      if (sessionList.value.length > 0) {
+        autoSelectFirstSession()
+      }
+    }, 500)
+  } catch (error) {
+    console.error('删除会话失败:', error)
+    ElMessage.error('删除会话失败，请稍后重试')
+  }
+}
+
+// 组件挂载时加载会话列表
 onMounted(() => {
   fetchSessions()
+})
+
+// 组件销毁前清理
+onBeforeUnmount(() => {
+  // 清理自动重试定时器
+  if (autoRetryTimer) {
+    clearTimeout(autoRetryTimer)
+    autoRetryTimer = null
+  }
 })
 </script>
 
 <style scoped>
-.chat-page {
-  padding: 20px;
-}
-
-.page-title {
-  margin-bottom: 20px;
-  font-weight: bold;
-  color: #303133;
-}
-
 .chat-container {
-  height: calc(100vh - 140px);
+  display: flex;
+  height: calc(100vh - 120px);
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 
-.session-list-card, 
-.chat-area-card {
-  height: 100%;
+.chat-sidebar {
+  width: 300px;
+  border-right: 1px solid #e6e6e6;
   display: flex;
   flex-direction: column;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .search-box {
-  margin-bottom: 15px;
+  padding: 15px;
+  border-bottom: 1px solid #e6e6e6;
 }
 
 .session-list {
@@ -298,10 +926,9 @@ onMounted(() => {
 }
 
 .session-item {
+  padding: 12px 15px;
   display: flex;
   align-items: center;
-  padding: 12px;
-  border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.3s;
 }
@@ -314,20 +941,23 @@ onMounted(() => {
   background-color: #ecf5ff;
 }
 
-.session-info {
-  flex: 1;
-  margin-left: 12px;
-  overflow: hidden;
+.session-badge {
+  margin-right: 12px;
 }
 
-.session-name {
-  font-weight: bold;
+.session-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
   margin-bottom: 4px;
 }
 
-.session-preview {
-  font-size: 12px;
-  color: #909399;
+.session-name {
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -336,117 +966,214 @@ onMounted(() => {
 .session-time {
   font-size: 12px;
   color: #909399;
-  margin-left: 10px;
 }
 
-.message-list {
+.session-message {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header {
+  height: 60px;
+  padding: 0 20px;
+  border-bottom: 1px solid #e6e6e6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-messages {
   flex: 1;
   overflow-y: auto;
   padding: 15px;
+  background-color: #f5f7fa;
 }
 
-.message-item {
-  display: flex;
+.message-wrapper {
   margin-bottom: 15px;
 }
 
-.message-item.self {
+.message-time {
+  text-align: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.message {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.message-self {
   flex-direction: row-reverse;
 }
 
 .message-avatar {
-  margin-right: 12px;
-}
-
-.message-item.self .message-avatar {
-  margin-right: 0;
-  margin-left: 12px;
+  margin: 0 10px;
 }
 
 .message-content {
   max-width: 70%;
 }
 
-.message-item.self .message-content {
-  align-items: flex-end;
-}
-
-.message-sender {
-  font-size: 12px;
-  color: #606266;
-  margin-bottom: 4px;
-}
-
-.message-item.self .message-sender {
-  text-align: right;
-}
-
-.message-time {
-  font-size: 12px;
-  color: #909399;
-  margin-left: 8px;
-}
-
-.message-bubble {
-  background-color: #f5f7fa;
-  padding: 10px 15px;
-  border-radius: 10px;
+.message-text {
+  padding: 10px 12px;
+  background-color: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   word-break: break-word;
 }
 
-.message-item.self .message-bubble {
+.message-self .message-text {
   background-color: #ecf5ff;
-  color: #409EFF;
 }
 
-.message-input {
-  margin-top: 15px;
-  border-top: 1px solid #ebeef5;
-  padding-top: 15px;
+.message-image {
+  max-width: 200px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.message-file {
+  padding: 10px 12px;
+  background-color: #fff;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-self .message-text,
+.message-self .message-file,
+.message-self .message-unknown {
+  background-color: #ecf5ff;
+}
+
+.loading-more {
+  text-align: center;
+  margin: 10px 0;
+}
+
+.chat-input {
+  padding: 15px;
+  border-top: 1px solid #e6e6e6;
+}
+
+.input-toolbar {
+  margin-bottom: 10px;
 }
 
 .input-actions {
+  text-align: right;
+  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
-  margin-top: 10px;
+  gap: 15px;
+}
+
+.no-session {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  background-color: #f5f7fa;
+}
+
+.session-detail {
+  padding: 20px;
+}
+
+.detail-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.detail-item {
+  margin-bottom: 15px;
+}
+
+.detail-label {
+  font-weight: 500;
+  margin-right: 10px;
+}
+
+.detail-actions {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.chat-error-container {
+  text-align: center;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  background-color: #f8f8f8;
+  border-radius: 8px;
+  margin: 20px;
+}
+
+.retry-button {
+  margin-top: 20px;
+  width: 120px;
 }
 
 .empty-messages {
   display: flex;
   justify-content: center;
   align-items: center;
+  height: 300px;
   color: #909399;
-  height: 100px;
 }
 
-.no-session-placeholder {
-  height: 100%;
+.sessions-loading {
+  padding: 20px;
+}
+
+.empty-sessions {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  height: 200px;
+}
+
+.session-actions {
+  padding: 10px;
+  text-align: center;
+  border-top: 1px solid #f0f0f0;
+}
+
+.refresh-button {
+  margin: 10px auto;
 }
 
 .readonly-notice {
   margin-top: 15px;
-}
-
-.message-image {
-  max-width: 100%;
-  max-height: 300px;
-  border-radius: 4px;
-}
-
-.message-file {
-  display: flex;
-  align-items: center;
-}
-
-.message-file i {
-  margin-right: 5px;
-}
-
-.message-file a {
-  color: inherit;
-  text-decoration: underline;
+  padding: 15px;
 }
 </style> 

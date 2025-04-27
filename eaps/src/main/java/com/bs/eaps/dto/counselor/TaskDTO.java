@@ -2,6 +2,7 @@ package com.bs.eaps.dto.counselor;
 
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * 辅导员任务DTO
@@ -53,4 +54,14 @@ public class TaskDTO {
      * 状态：pending, processing, completed
      */
     private String status;
+
+    /**
+     * 岗位详情
+     */
+    private Map<String, Object> jobDetails;
+
+    /**
+     * 企业详情
+     */
+    private Map<String, Object> companyDetails;
 }

@@ -19,6 +19,8 @@ import com.bs.eaps.mapper.CompanyMapper;
 import com.bs.eaps.mapper.CounselorProfileMapper;
 import com.bs.eaps.mapper.JobPostingMapper;
 import com.bs.eaps.service.CounselorService;
+import com.bs.eaps.service.JobTagRelationService;
+import com.bs.eaps.service.JobWelfareService;
 import com.bs.eaps.utils.SecurityUtils;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -34,7 +36,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +54,8 @@ public class CounselorServiceImpl implements CounselorService {
     private final CompanyMapper companyMapper;
     private final CounselorProfileMapper counselorProfileMapper;
     private final JobPostingMapper jobPostingMapper;
+    private final JobTagRelationService jobTagRelationService;
+    private final JobWelfareService jobWelfareService;
 
     /**
      * 获取辅导员待处理的各类任务数量统计
@@ -103,29 +109,186 @@ public class CounselorServiceImpl implements CounselorService {
             TaskDTO taskDTO = new TaskDTO();
             BeanUtils.copyProperties(task, taskDTO);
 
-            // 获取公司名称（根据目标项类型）
-            if ("Company".equals(task.getTargetItemType())) {
-                // 如果目标是公司，直接查询公司信息
-                Company company = companyMapper.selectById(task.getTargetItemId());
-                if (company != null) {
-                    taskDTO.setCompanyName(company.getName());
-                }
-            } else if ("Job".equals(task.getTargetItemType())) {
-                // 如果目标是岗位，需要先查询岗位，再查询关联的公司
+            // 添加更多目标项详情
+            if ("jobAudit".equals(task.getType()) && "Job".equals(task.getTargetItemType())) {
                 JobPosting job = jobPostingMapper.selectById(task.getTargetItemId());
                 if (job != null) {
+                    taskDTO.setJobDetails(getJobDetailsMap(job));
+
+                    // 获取公司信息
                     Company company = companyMapper.selectById(job.getCompanyId());
                     if (company != null) {
                         taskDTO.setCompanyName(company.getName());
+                        taskDTO.setCompanyDetails(getCompanyDetailsMap(company));
                     }
                 }
+            } else if ("companyCertification".equals(task.getType()) && "Company".equals(task.getTargetItemType())) {
+                // 如果目标是公司，获取公司详细信息
+                Company company = companyMapper.selectById(task.getTargetItemId());
+                if (company != null) {
+                    taskDTO.setCompanyName(company.getName());
+                    taskDTO.setCompanyDetails(getCompanyDetailsMap(company));
+                }
+            } else if ("reportHandling".equals(task.getType())) {
+                // 根据举报类型获取详细信息
+                // 此处可以根据需要添加举报类型的详细信息
             }
-            // 其他类型的目标项可能也需要关联企业，根据实际情况添加
 
             return taskDTO;
         }).collect(Collectors.toList());
 
         return PageResultDTO.of(taskPage.getTotal(), taskDTOList);
+    }
+
+    /**
+     * 获取所有状态的特定类型任务列表
+     */
+    @Override
+    public PageResultDTO<TaskDTO> getAllTasksList(String type, PageRequestDTO pageRequest, boolean includeAll,
+            String statusFilter) {
+        LambdaQueryWrapper<CounselorTask> queryWrapper = new LambdaQueryWrapper<>();
+
+        // 根据任务类型筛选
+        if (StringUtils.hasText(type) && !"all".equals(type)) {
+            queryWrapper.eq(CounselorTask::getType, type);
+        }
+
+        // 根据是否包含所有状态决定查询条件
+        if (!includeAll) {
+            // 只查询待处理的任务
+            queryWrapper.eq(CounselorTask::getStatus, "pending");
+        }
+
+        // 根据优先级和创建时间排序
+        queryWrapper.orderByDesc(CounselorTask::getPriority)
+                .orderByAsc(CounselorTask::getCreatedAt);
+
+        // 分页查询
+        Page<CounselorTask> page = new Page<>(pageRequest.getPage(), pageRequest.getPageSize());
+        IPage<CounselorTask> taskPage = counselorTaskMapper.selectPage(page, queryWrapper);
+
+        // 转换为DTO
+        List<TaskDTO> taskDTOList = new ArrayList<>();
+
+        for (CounselorTask task : taskPage.getRecords()) {
+            TaskDTO taskDTO = new TaskDTO();
+            BeanUtils.copyProperties(task, taskDTO);
+
+            // 对于jobAudit类型任务，获取相关岗位和企业信息
+            if ("jobAudit".equals(task.getType()) && "Job".equals(task.getTargetItemType())) {
+                JobPosting job = jobPostingMapper.selectById(task.getTargetItemId());
+
+                if (job != null) {
+                    // 如果指定了岗位状态筛选，跳过不匹配的岗位
+                    if (StringUtils.hasText(statusFilter) && !"all".equals(statusFilter)
+                            && !statusFilter.equalsIgnoreCase(job.getStatus())) {
+                        continue;
+                    }
+
+                    taskDTO.setJobDetails(getJobDetailsMap(job));
+
+                    // 获取公司信息
+                    Company company = companyMapper.selectById(job.getCompanyId());
+                    if (company != null) {
+                        taskDTO.setCompanyName(company.getName());
+                        taskDTO.setCompanyDetails(getCompanyDetailsMap(company));
+                    }
+
+                    // 将DTO添加到结果列表
+                    taskDTOList.add(taskDTO);
+                }
+            } else if ("companyCertification".equals(task.getType()) && "Company".equals(task.getTargetItemType())) {
+                // 如果目标是公司，获取公司详细信息
+                Company company = companyMapper.selectById(task.getTargetItemId());
+                if (company != null) {
+                    // 如果指定了企业状态筛选，跳过不匹配的企业
+                    if (StringUtils.hasText(statusFilter) && !"all".equals(statusFilter)
+                            && !statusFilter.equalsIgnoreCase(company.getCertificationStatus())) {
+                        continue;
+                    }
+
+                    taskDTO.setCompanyName(company.getName());
+                    taskDTO.setCompanyDetails(getCompanyDetailsMap(company));
+                    taskDTOList.add(taskDTO);
+                }
+            } else if ("reportHandling".equals(task.getType())) {
+                // 根据举报类型获取详细信息，暂不进行岗位状态筛选
+                taskDTOList.add(taskDTO);
+            } else {
+                // 其他类型任务直接添加
+                taskDTOList.add(taskDTO);
+            }
+        }
+
+        // 手动计算总记录数（考虑到岗位状态筛选可能导致实际返回数量少于查询结果）
+        long total = includeAll ? taskDTOList.size() : taskPage.getTotal();
+
+        return PageResultDTO.of(total, taskDTOList);
+    }
+
+    /**
+     * 获取岗位详细信息map
+     */
+    private Map<String, Object> getJobDetailsMap(JobPosting job) {
+        Map<String, Object> jobDetails = new HashMap<>();
+        jobDetails.put("id", job.getId());
+        jobDetails.put("title", job.getTitle());
+        jobDetails.put("description", job.getDescription());
+        jobDetails.put("requirement", job.getRequirement());
+        jobDetails.put("location", job.getLocation());
+        jobDetails.put("salary", job.getSalary());
+        jobDetails.put("education", job.getEducation());
+        jobDetails.put("experience", job.getExperience());
+        jobDetails.put("jobType", job.getJobType());
+        jobDetails.put("headcount", job.getHeadcount());
+        jobDetails.put("workTime", job.getWorkTime());
+        jobDetails.put("publishedAt", job.getPublishedAt());
+        jobDetails.put("validUntil", job.getValidUntil());
+        jobDetails.put("contactPerson", job.getContactPerson());
+        jobDetails.put("contactMethod", job.getContactMethod());
+        jobDetails.put("showContact", job.getShowContact());
+        jobDetails.put("status", job.getStatus());
+        jobDetails.put("createdAt", job.getCreatedAt());
+
+        // 获取岗位标签
+        try {
+            List<String> jobTags = jobTagRelationService.getTagNamesByJobId(job.getId());
+            jobDetails.put("jobTags", jobTags);
+        } catch (Exception e) {
+            log.error("获取岗位标签失败: {}", e.getMessage());
+            jobDetails.put("jobTags", new ArrayList<>());
+        }
+
+        // 获取福利标签
+        try {
+            List<String> welfareTags = jobWelfareService.getTagNamesByJobId(job.getId());
+            jobDetails.put("welfareTags", welfareTags);
+        } catch (Exception e) {
+            log.error("获取福利标签失败: {}", e.getMessage());
+            jobDetails.put("welfareTags", new ArrayList<>());
+        }
+
+        return jobDetails;
+    }
+
+    /**
+     * 获取企业详细信息map
+     */
+    private Map<String, Object> getCompanyDetailsMap(Company company) {
+        Map<String, Object> companyDetails = new HashMap<>();
+        companyDetails.put("id", company.getId());
+        companyDetails.put("name", company.getName());
+        companyDetails.put("unifiedSocialCreditCode", company.getUnifiedSocialCreditCode());
+        companyDetails.put("industry", company.getIndustry());
+        companyDetails.put("size", company.getSize());
+        companyDetails.put("address", company.getAddress());
+        companyDetails.put("description", company.getDescription());
+        companyDetails.put("hrContact", company.getHrContact());
+        companyDetails.put("logoPath", company.getLogoPath());
+        companyDetails.put("certificationStatus", company.getCertificationStatus());
+        companyDetails.put("certificationExpiryDate", company.getCertificationExpiryDate());
+        companyDetails.put("createdAt", company.getCreatedAt());
+        return companyDetails;
     }
 
     /**

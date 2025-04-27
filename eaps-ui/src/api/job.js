@@ -333,4 +333,17 @@ export function withdrawApplication(applicationId) {
       applicationId
     }
   }).then(handleResponse)
+}
+
+/**
+ * 根据岗位ID获取企业ID
+ * @param {number} jobId - 岗位ID
+ * @returns {Promise} - 返回企业ID
+ */
+export function getCompanyIdByJobId(jobId) {
+  return request({
+    url: '/api/job/company-id',
+    method: 'post',
+    data: { jobId: Number(jobId) }
+  }).then(handleResponse)
 } 
