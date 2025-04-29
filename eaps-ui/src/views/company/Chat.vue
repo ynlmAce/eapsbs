@@ -265,6 +265,18 @@ let autoRetryTimer = null
 const chatError = ref(false)
 const errorMessage = ref('')
 
+// WebSocket 相关
+let ws = null
+const wsConnected = ref(false)
+const wsUrl = computed(() => {
+  const token = userStore.token;
+  // 自动适配后端端口，开发环境用8080，生产环境用当前域名
+  let base = window.location.origin.replace(/^http/, 'ws');
+  // 支持多端口开发环境，统一替换为8080
+  base = base.replace(/:(5173|5174|5175)/, ':8080');
+  return `${base}/ws/chat?token=${encodeURIComponent(token)}`;
+});
+
 // 筛选后的会话列表
 const filteredSessions = computed(() => {
   if (!searchKeyword.value) {
@@ -550,65 +562,37 @@ const showMessageTime = (message, index) => {
 
 // 发送消息
 const sendMessage = async () => {
-  if (!currentSession.value) {
-    ElMessage.warning('请先选择会话')
-    return
+  if (!messageText.value.trim() || !currentSession.value) return;
+  const content = messageText.value;
+  messageText.value = '';
+  // 不再本地插入临时消息，等待WebSocket推送
+  if (ws && wsConnected.value) {
+    try {
+      ws.send(
+        JSON.stringify({
+          sessionId: currentSession.value.id,
+          content,
+          contentType: 'text',
+        })
+      );
+      // 等待WebSocket推送
+      return;
+    } catch (e) {
+      console.error('WebSocket发送失败，降级API', e);
+    }
   }
-  
-  if (!messageText.value.trim()) {
-    ElMessage.warning('消息不能为空')
-    return
-  }
-  
-  const sessionId = currentSession.value.id
-  const content = messageText.value.trim()
-  messageText.value = ''
-  
-  // 创建临时消息显示在界面上
-  const tempId = 'temp-' + Date.now()
-  const tempMessage = {
-    id: tempId,
-    content: content,
-    type: 'text',
-    time: formatMessageTime(new Date()),
-    sentAt: new Date().toISOString(),
-    isSelf: true,
-    status: 'sending',
-    avatar: userStore.userInfo?.avatar || defaultAvatar
-  }
-  
-  // 立即显示临时消息
-  messages.value.push(tempMessage)
-  await nextTick()
-  scrollToBottom()
-  
+  // 降级API
   try {
-    // 发送消息
-    const result = await callApi(sendChatMessage(sessionId, {
-      content: content,
-      contentType: 'text'
-    }))
-    
-    // 更新临时消息为发送成功状态
-    const index = messages.value.findIndex(m => m.id === tempId)
-    if (index !== -1) {
-      messages.value[index].id = result.id || result.messageId
-      messages.value[index].status = 'sent'
+    const messageData = { content, contentType: 'text' };
+    const res = await callApi(sendChatMessage(currentSession.value.id, messageData));
+    // 不再本地插入消息，等待WebSocket推送
+    if (!(res && typeof res === 'object' && (res.messageId || res.id))) {
+      ElMessage.error(res?.message || '发送消息失败');
     }
-    
-    // 更新会话列表中的最后一条消息
-    updateSessionLastMessage(sessionId, content)
   } catch (error) {
-    console.error('发送消息失败:', error)
-    ElMessage.error('发送消息失败，请重试')
-    
-    // 标记临时消息为发送失败状态
-    const index = messages.value.findIndex(m => m.id === tempId)
-    if (index !== -1) {
-      messages.value[index].status = 'failed'
-    }
+    ElMessage.error('发送消息失败，请稍后重试');
   }
-}
+};
 
 // 触发图片上传
 const triggerImageUpload = () => {
@@ -868,9 +852,74 @@ const previewImage = (imageUrl) => {
   window.open(imageUrl, '_blank')
 }
 
+// WebSocket 消息处理
+const handleWsMessage = (event) => {
+  console.log('收到WebSocket消息:', event.data);
+  try {
+    const data = JSON.parse(event.data)
+    if (data && data.type === 'chat_message' && data.sessionId && data.message) {
+      if (
+        currentSession.value &&
+        data.sessionId === currentSession.value.id
+      ) {
+        // 避免重复
+        if (!messages.value.some(msg => msg.messageId === data.message.messageId)) {
+          messages.value.push({
+            ...data.message,
+            type: (data.message.contentType || 'text').toLowerCase(),
+            senderType: data.message.senderId === userStore.userInfo.id ? "self" : "other",
+            status: "sent",
+          });
+          nextTick(scrollToBottom);
+        }
+      }
+      // 可选：更新会话列表最新消息
+    }
+  } catch (e) {
+    console.error("WebSocket消息解析失败", e);
+  }
+}
+
+// 建立WebSocket连接
+const connectWebSocket = () => {
+  if (ws) return
+  try {
+    ws = new window.WebSocket(wsUrl.value)
+    ws.onopen = () => {
+      wsConnected.value = true
+    }
+    ws.onmessage = handleWsMessage
+    console.log(event.data)
+    ws.onclose = () => {
+      wsConnected.value = false
+      ws = null
+      // 可选：自动重连
+      setTimeout(connectWebSocket, 5000)
+    }
+    ws.onerror = () => {
+      wsConnected.value = false
+      ws && ws.close()
+      ws = null
+    }
+  } catch (e) {
+    wsConnected.value = false
+    ws = null
+  }
+}
+
+// 断开WebSocket连接
+const disconnectWebSocket = () => {
+  if (ws) {
+    ws.close()
+    ws = null
+    wsConnected.value = false
+  }
+}
+
 // 组件挂载时加载会话列表
 onMounted(() => {
   loadSessions()
+  connectWebSocket()
 })
 
 // 组件销毁前清理
@@ -880,6 +929,7 @@ onBeforeUnmount(() => {
     clearTimeout(autoRetryTimer)
     autoRetryTimer = null
   }
+  disconnectWebSocket()
 })
 </script>
 

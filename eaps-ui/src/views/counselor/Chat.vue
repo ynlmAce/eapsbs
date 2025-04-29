@@ -221,6 +221,7 @@ import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElLoading } from 'element-plus'
 import { getChatSessions, getChatMessages, sendChatMessage, markMessageRead, uploadChatFile } from '@/api/chat'
+import { userStore } from '@/stores/user'
 
 // 路由和状态管理
 const route = useRoute()
@@ -245,6 +246,18 @@ const loadingMore = ref(false)
 const imageInput = ref(null)
 const fileInput = ref(null)
 let autoRetryTimer = null
+
+// WebSocket 相关
+let ws = null
+const wsConnected = ref(false)
+const wsUrl = computed(() => {
+  const token = userStore.token;
+  // 自动适配后端端口，开发环境用8080，生产环境用当前域名
+  let base = window.location.origin.replace(/^http/, 'ws');
+  // 支持多端口开发环境，统一替换为8080
+  base = base.replace(/:(5173|5174|5175)/, ':8080');
+  return `${base}/ws/chat?token=${encodeURIComponent(token)}`;
+})
 
 // 过滤后的会话列表
 const filteredSessions = computed(() => {
@@ -585,74 +598,37 @@ const getDefaultAvatar = (senderType) => {
 
 // 发送消息
 const sendMessage = async () => {
-  if (!messageText.value.trim() || !currentSession.value || currentSession.value.isReadOnly) return
-  
-  try {
-    // 构建临时消息，立即显示在界面上
-    const tempMessage = {
-      id: 'temp-' + Date.now(),
-      sessionId: currentSession.value.id,
-      senderId: userId.value,
-      senderType: 'counselor',
-      senderName: userName.value,
-      senderAvatar: userAvatar.value,
-      content: messageText.value.trim(),
-      contentType: 'text',
-      sentAt: new Date().toISOString(),
-      status: 'sending'
-    }
-    
-    // 添加到消息列表
-    messages.value.push(tempMessage)
-    
-    // 清空输入框
-    const content = messageText.value.trim()
-    messageText.value = ''
-    
-    // 滚动到底部
-    scrollToBottom()
-    
-    // 发送消息到服务器
-    const messageData = {
-      content: content,
-      contentType: 'text'
-    }
-    const result = await sendChatMessage(currentSession.value.id, messageData)
-    
-    if (result) {
-      // 更新临时消息
-      const index = messages.value.findIndex(m => m.id === tempMessage.id)
-      if (index !== -1) {
-        messages.value[index].id = result.messageId || result.id
-        messages.value[index].status = 'sent'
-        messages.value[index].sentAt = result.sentAt || tempMessage.sentAt
-      }
-      
-      // 更新会话列表中的最后一条消息
-      const sessionIndex = sessionList.value.findIndex(session => session.id === currentSession.value.id)
-      if (sessionIndex !== -1) {
-        sessionList.value[sessionIndex].lastMessage = {
-          content: content,
-          sentAt: new Date().toISOString()
-        }
-        sessionList.value[sessionIndex].lastActiveAt = new Date().toISOString()
-        
-        // 将当前会话移到顶部
-        const currentSessionData = sessionList.value.splice(sessionIndex, 1)[0]
-        sessionList.value.unshift(currentSessionData)
-      }
-    }
-  } catch (error) {
-    console.error('发送消息失败:', error)
-    ElMessage.error('发送消息失败，请重试')
-    
-    // 标记临时消息为失败状态
-    const index = messages.value.findIndex(m => m.id === 'temp-' + Date.now())
-    if (index !== -1) {
-      messages.value[index].status = 'failed'
+  if (!messageText.value.trim() || !currentSession.value || currentSession.value.isReadOnly) return;
+  const content = messageText.value.trim();
+  messageText.value = '';
+  // 不再本地插入临时消息，等待WebSocket推送
+  if (ws && wsConnected.value) {
+    try {
+      ws.send(
+        JSON.stringify({
+          sessionId: currentSession.value.id,
+          content,
+          contentType: 'text',
+        })
+      );
+      // 等待WebSocket推送
+      return;
+    } catch (e) {
+      console.error('WebSocket发送失败，降级API', e);
     }
   }
-}
+  // 降级API
+  try {
+    const messageData = { content, contentType: 'text' };
+    const res = await sendChatMessage(currentSession.value.id, messageData);
+    // 不再本地插入消息，等待WebSocket推送
+    if (!(res && typeof res === 'object' && (res.messageId || res.id))) {
+      ElMessage.error(res?.message || '发送消息失败');
+    }
+  } catch (error) {
+    ElMessage.error('发送消息失败，请稍后重试');
+  }
+};
 
 // 触发图片上传
 const triggerImageUpload = () => {
@@ -884,9 +860,76 @@ const deleteSession = async (sessionId) => {
   }
 }
 
+// WebSocket 消息处理
+const handleWsMessage = (event) => {
+  try {
+    const data = JSON.parse(event.data)
+    if (data && data.type === 'chat_message') {
+      // 判断消息是否属于当前会话
+      if (currentSession.value && data.sessionId === currentSession.value.id) {
+        // 插入消息到当前会话
+        messages.value.push({
+          ...data.message,
+          senderAvatar: data.message.senderAvatar || getDefaultAvatar(data.message.senderType)
+        })
+        scrollToBottom()
+        // 标记为已读
+        markMessageRead(currentSession.value.id)
+      } else {
+        // 更新会话未读数
+        const idx = sessionList.value.findIndex(s => s.id === data.sessionId)
+        if (idx !== -1) {
+          sessionList.value[idx].unreadCount = (sessionList.value[idx].unreadCount || 0) + 1
+          sessionList.value[idx].lastMessage = data.message
+          sessionList.value[idx].lastActiveAt = data.message.sentAt
+        }
+      }
+    }
+  } catch (e) {
+    // 忽略解析错误
+  }
+}
+
+// 建立WebSocket连接
+const connectWebSocket = () => {
+  if (ws) return
+  try {
+    ws = new window.WebSocket(wsUrl.value)
+    ws.onopen = () => {
+      wsConnected.value = true
+    }
+    ws.onmessage = handleWsMessage
+    console.log(event.data)
+    ws.onclose = () => {
+      wsConnected.value = false
+      ws = null
+      // 可选：自动重连
+      setTimeout(connectWebSocket, 5000)
+    }
+    ws.onerror = () => {
+      wsConnected.value = false
+      ws && ws.close()
+      ws = null
+    }
+  } catch (e) {
+    wsConnected.value = false
+    ws = null
+  }
+}
+
+// 断开WebSocket连接
+const disconnectWebSocket = () => {
+  if (ws) {
+    ws.close()
+    ws = null
+    wsConnected.value = false
+  }
+}
+
 // 组件挂载时加载会话列表
 onMounted(() => {
   fetchSessions()
+  connectWebSocket()
 })
 
 // 组件销毁前清理
@@ -896,6 +939,7 @@ onBeforeUnmount(() => {
     clearTimeout(autoRetryTimer)
     autoRetryTimer = null
   }
+  disconnectWebSocket()
 })
 </script>
 

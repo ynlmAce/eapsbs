@@ -12,12 +12,14 @@ import com.bs.eaps.mapper.ChatMessageMapper;
 import com.bs.eaps.mapper.ChatSessionMapper;
 import com.bs.eaps.mapper.CompanyProfileMapper;
 import com.bs.eaps.service.ChatService;
+import com.bs.eaps.websocket.ChatWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -39,6 +41,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatSessionMapper chatSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final CompanyProfileMapper companyProfileMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public Object getChatSessions(Long userId) {
@@ -334,6 +337,9 @@ public class ChatServiceImpl implements ChatService {
             result.put("contentType", contentType);
             result.put("content", sendDTO.getContent());
             result.put("sentAt", now);
+
+            // 5. 发布事件
+            eventPublisher.publishEvent(new com.bs.eaps.websocket.ChatMessageSentEvent(this, sessionId, result));
 
             return result;
         } catch (IllegalArgumentException e) {
@@ -636,5 +642,20 @@ public class ChatServiceImpl implements ChatService {
             log.error("创建学生-企业会话异常", e);
             throw new RuntimeException("创建聊天会话失败，请稍后再试");
         }
+    }
+
+    @Override
+    public List<Long> getParticipantIdsBySessionId(Long sessionId) {
+        ChatSession session = chatSessionMapper.selectById(sessionId);
+        List<Long> ids = new ArrayList<>();
+        if (session != null) {
+            if (session.getParticipant1Id() != null)
+                ids.add(session.getParticipant1Id());
+            if (session.getParticipant2Id() != null
+                    && !session.getParticipant2Id().equals(session.getParticipant1Id())) {
+                ids.add(session.getParticipant2Id());
+            }
+        }
+        return ids;
     }
 }

@@ -42,6 +42,8 @@ public class SecurityConfig {
                 .and()
                 .csrf().disable()
                 .authorizeHttpRequests(authorize -> authorize
+                        // 放行 WebSocket 端点
+                        .requestMatchers("/ws/chat").permitAll()
                         // 允许所有用户访问登录、注册相关接口
                         .requestMatchers("/api/auth/login", "/api/auth/register/**").permitAll()
                         // 允许访问忘记密码相关接口

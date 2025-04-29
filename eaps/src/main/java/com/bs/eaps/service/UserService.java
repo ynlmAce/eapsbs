@@ -77,4 +77,12 @@ public interface UserService {
      * @return 是否重置成功
      */
     boolean resetPassword(String username, String securityAnswer, String newPassword);
+
+    /**
+     * 根据用户名获取用户ID
+     * 
+     * @param username 用户名
+     * @return 用户ID
+     */
+    Long getUserIdByUsername(String username);
 }

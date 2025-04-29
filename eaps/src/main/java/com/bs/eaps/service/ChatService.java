@@ -6,6 +6,8 @@ import com.bs.eaps.dto.chat.ChatSendDTO;
 import com.bs.eaps.dto.chat.StudentCompanyChatDTO;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 /**
  * 聊天服务接口
  */
@@ -65,4 +67,12 @@ public interface ChatService {
      * @return 创建结果
      */
     Object createStudentCompanyChat(Long studentUserId, StudentCompanyChatDTO chatDTO);
+
+    /**
+     * 获取会话参与方用户ID列表
+     * 
+     * @param sessionId 会话ID
+     * @return 用户ID列表
+     */
+    List<Long> getParticipantIdsBySessionId(Long sessionId);
 }
