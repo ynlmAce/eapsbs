@@ -123,4 +123,33 @@ public class ChatController {
         log.info("创建学生-企业会话请求，学生ID: {}, 数据: {}", userId, chatDTO);
         return ApiResponse.success(chatService.createStudentCompanyChat(userId, chatDTO));
     }
+
+    /**
+     * 创建学生-辅导员聊天会话
+     * 
+     * @param params {counselorId}
+     * @return 会话ID
+     */
+    @PostMapping("/sessions/student-counselor")
+    public ApiResponse createStudentCounselorSession(@RequestBody Map<String, Object> params) {
+        Long studentUserId = SecurityUtils.getCurrentUserId();
+        Long counselorId = null;
+        if (params != null && params.get("counselorId") != null) {
+            Object idObj = params.get("counselorId");
+            if (idObj instanceof Number) {
+                counselorId = ((Number) idObj).longValue();
+            } else if (idObj instanceof String) {
+                counselorId = Long.parseLong((String) idObj);
+            }
+        }
+        if (studentUserId == null || counselorId == null) {
+            return ApiResponse.businessError("参数不完整");
+        }
+        try {
+            Object sessionId = chatService.createStudentCounselorSession(studentUserId, counselorId);
+            return ApiResponse.success(sessionId);
+        } catch (Exception e) {
+            return ApiResponse.error(500, "创建会话失败: " + e.getMessage());
+        }
+    }
 }

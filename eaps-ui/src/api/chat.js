@@ -221,10 +221,11 @@ export const getUnreadCount = () => {
 }
 
 // 标记消息为已读
-export const markMessageRead = (sessionId) => {
+export function markMessageRead(sessionId) {
   return request({
-    url: `/api/chat/sessions/${sessionId}/read`,
-    method: 'put'
+    url: '/api/chat/read',
+    method: 'post',
+    data: { sessionId }
   })
 }
 

@@ -84,21 +84,6 @@
           </div>
         </div>
         
-        <div class="job-stats">
-          <div class="stat-item">
-            <div class="stat-value">{{ job.viewCount }}</div>
-            <div class="stat-label">浏览</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">{{ job.applicationCount }}</div>
-            <div class="stat-label">申请</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">{{ job.interviewCount }}</div>
-            <div class="stat-label">面试</div>
-          </div>
-        </div>
-        
         <div class="job-actions">
           <el-button v-if="job.status === 'recruiting'" size="small" @click="handleRefresh(job)">刷新</el-button>
           <el-button v-if="job.status === 'recruiting'" size="small" @click="handleEnd(job)">结束招聘</el-button>
@@ -516,30 +501,6 @@ const handleDelete = async (job) => {
 
 .meta-item .el-icon {
   margin-right: 5px;
-}
-
-.job-stats {
-  display: flex;
-  margin-bottom: 15px;
-  border-top: 1px solid #ebeef5;
-  border-bottom: 1px solid #ebeef5;
-  padding: 15px 0;
-}
-
-.stat-item {
-  flex: 1;
-  text-align: center;
-}
-
-.stat-value {
-  font-size: 20px;
-  font-weight: bold;
-  color: #409eff;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
 }
 
 .job-actions {

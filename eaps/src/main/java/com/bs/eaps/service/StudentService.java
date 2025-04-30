@@ -4,6 +4,7 @@ import com.bs.eaps.entity.StudentProfile;
 import com.bs.eaps.entity.StudentResumeFile;
 import com.bs.eaps.entity.StudentStructuredResume;
 import org.springframework.web.multipart.MultipartFile;
+import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.util.List;
 import java.util.Map;
@@ -11,7 +12,7 @@ import java.util.Map;
 /**
  * 学生服务接口
  */
-public interface StudentService {
+public interface StudentService extends IService<StudentProfile> {
 
     /**
      * 获取学生个人资料

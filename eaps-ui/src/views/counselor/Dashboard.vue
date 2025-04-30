@@ -4,7 +4,7 @@
     
     <!-- 任务概览 -->
     <el-row :gutter="20" class="task-overview">
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card shadow="hover" class="task-card" :class="{ 'disabled-card': dashboard.companyCertTasks === 0 }">
           <div class="task-info">
             <div class="task-title">企业认证</div>
@@ -23,8 +23,7 @@
           >处理</el-button>
         </el-card>
       </el-col>
-      
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card shadow="hover" class="task-card" :class="{ 'disabled-card': dashboard.jobAuditTasks === 0 }">
           <div class="task-info">
             <div class="task-title">岗位审核</div>
@@ -43,12 +42,11 @@
           >处理</el-button>
         </el-card>
       </el-col>
-      
-      <el-col :span="6">
-        <el-card shadow="hover" class="task-card" :class="{ 'disabled-card': dashboard.reportedRatings === 0 }">
+      <el-col :span="8">
+        <el-card shadow="hover" class="task-card" :class="{ 'disabled-card': dashboard.reportHandling === 0 }">
           <div class="task-info">
-            <div class="task-title">评价举报</div>
-            <div class="task-count">{{ dashboard.reportedRatings }}</div>
+            <div class="task-title">举报处理</div>
+            <div class="task-count">{{ dashboard.reportHandling }}</div>
           </div>
           <div class="task-icon">
             <el-icon><Star /></el-icon>
@@ -58,28 +56,8 @@
             plain 
             size="small" 
             class="task-action"
-            :disabled="dashboard.reportedRatings === 0"
-            @click="goToReports('rating')"
-          >处理</el-button>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="6">
-        <el-card shadow="hover" class="task-card" :class="{ 'disabled-card': dashboard.reportedMessages === 0 }">
-          <div class="task-info">
-            <div class="task-title">消息举报</div>
-            <div class="task-count">{{ dashboard.reportedMessages }}</div>
-          </div>
-          <div class="task-icon">
-            <el-icon><ChatDotRound /></el-icon>
-          </div>
-          <el-button 
-            type="primary" 
-            plain 
-            size="small" 
-            class="task-action"
-            :disabled="dashboard.reportedMessages === 0"
-            @click="goToReports('message')"
+            :disabled="dashboard.reportHandling === 0"
+            @click="goToReports()"
           >处理</el-button>
         </el-card>
       </el-col>
@@ -262,7 +240,7 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="taskDetailDialogVisible = false">关闭</el-button>
-          <el-button type="primary" @click="handleTaskFromDialog">处理此任务</el-button>
+          <!-- <el-button type="primary" @click="handleTaskFromDialog">处理此任务</el-button> -->
         </span>
       </template>
     </el-dialog>
@@ -659,48 +637,64 @@ const getCertificationStatus = (status) => {
 }
 
 .task-card {
-  height: 160px;
+  height: 180px;
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  transition: all 0.3s;
+  align-items: center;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.06);
+  background: #fff;
+  transition: box-shadow 0.3s, transform 0.3s;
 }
 
 .task-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  transform: translateY(-6px) scale(1.03);
+  box-shadow: 0 8px 24px 0 rgba(64,158,255,0.18);
 }
 
 .task-info {
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.task-title {
-  font-size: 16px;
-  color: #606266;
   margin-bottom: 10px;
 }
 
+.task-title {
+  font-size: 17px;
+  color: #606266;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
 .task-count {
-  font-size: 36px;
+  font-size: 44px;
   font-weight: bold;
-  color: #303133;
+  color: #409eff;
+  margin-bottom: 2px;
+  letter-spacing: 2px;
 }
 
 .task-icon {
   position: absolute;
-  right: 20px;
-  top: 20px;
-  font-size: 30px;
-  color: #dcdfe6;
+  right: 18px;
+  top: 18px;
+  font-size: 32px;
+  color: #e4e7ed;
 }
 
 .task-action {
-  margin-top: 15px;
+  margin-top: 10px;
   align-self: center;
+  border-radius: 6px;
+  font-size: 15px;
+  padding: 4px 18px;
+}
+
+.disabled-card {
+  opacity: 0.6;
+  filter: grayscale(0.2);
 }
 
 .pending-tasks {
@@ -742,9 +736,5 @@ const getCertificationStatus = (status) => {
   font-size: 12px;
   color: #909399;
   margin-top: 5px;
-}
-
-.disabled-card {
-  opacity: 0.7;
 }
 </style> 

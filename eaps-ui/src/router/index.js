@@ -133,6 +133,12 @@ const routes = [
         path: 'chat',
         name: 'CounselorChat',
         component: () => import('../views/counselor/Chat.vue')
+      },
+      {
+        path: 'students',
+        name: 'CounselorStudents',
+        component: () => import('@/views/counselor/Students.vue'),
+        meta: { requiresAuth: true, role: 'counselor', title: '学生管理' }
       }
     ]
   },

@@ -62,4 +62,9 @@ public class CounselorProfileDTO {
      * 个人简介
      */
     private String introduction;
+
+    /**
+     * 主键ID
+     */
+    private Long id;
 }

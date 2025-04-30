@@ -79,6 +79,12 @@ public class StudentProfile implements Serializable {
     private Integer behaviorScore;
 
     /**
+     * 辅导员ID
+     */
+    @TableField("counselor_id")
+    private Long counselorId;
+
+    /**
      * 创建时间
      */
     @TableField("created_at")

@@ -34,12 +34,16 @@
             <el-icon><ChatDotRound /></el-icon>
             <span>沟通中心</span>
           </el-menu-item>
+          <el-menu-item index="/counselor/students">
+            <el-icon><UserFilled /></el-icon>
+            <span>学生管理</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
       <el-container>
         <el-header>
           <div class="header-container">
-            <div class="logo">大学生就业帮扶系统 - 辅导员工作台</div>
+            <div class="logo">大学生就业帮扶平台 - 辅导员工作台</div>
             <div class="user-info">
               <el-badge :value="pendingTasksCount" :hidden="pendingTasksCount === 0" class="task-badge">
                 <el-button size="small" @click="goToDashboard">待办任务</el-button>

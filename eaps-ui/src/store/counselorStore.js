@@ -8,8 +8,7 @@ export const useCounselorStore = defineStore('counselor', {
     dashboard: {
       companyCertTasks: 0,
       jobAuditTasks: 0,
-      reportedRatings: 0,
-      reportedMessages: 0,
+      reportHandling: 0,
       total: 0
     },
     // 任务列表
@@ -28,7 +27,12 @@ export const useCounselorStore = defineStore('counselor', {
   actions: {
     // 设置工作台数据
     setDashboardData(data) {
-      this.dashboard = data
+      this.dashboard = {
+        companyCertTasks: data.companyCertification ?? 0,
+        jobAuditTasks: data.jobAudit ?? 0,
+        reportHandling: data.reportHandling ?? 0,
+        total: data.total ?? 0
+      }
     },
     
     // 设置任务列表
@@ -59,19 +63,16 @@ export const useCounselorStore = defineStore('counselor', {
         this.dashboard.total--
       } else if (type === 'reportHandling') {
         // 对于举报，需要区分是评价举报还是消息举报
-        if (subtype === 'rating' && this.dashboard.reportedRatings > 0) {
-          this.dashboard.reportedRatings--
+        if (subtype === 'rating' && this.dashboard.reportHandling > 0) {
+          this.dashboard.reportHandling--
           this.dashboard.total--
-        } else if (subtype === 'message' && this.dashboard.reportedMessages > 0) {
-          this.dashboard.reportedMessages--
+        } else if (subtype === 'message' && this.dashboard.reportHandling > 0) {
+          this.dashboard.reportHandling--
           this.dashboard.total--
         } else if (!subtype) {
           // 如果没有子类型，随机减少一个
-          if (this.dashboard.reportedRatings > 0) {
-            this.dashboard.reportedRatings--
-            this.dashboard.total--
-          } else if (this.dashboard.reportedMessages > 0) {
-            this.dashboard.reportedMessages--
+          if (this.dashboard.reportHandling > 0) {
+            this.dashboard.reportHandling--
             this.dashboard.total--
           }
         }
@@ -221,16 +222,16 @@ export const useCounselorStore = defineStore('counselor', {
     },
     
     // 获取举报处理任务列表
-    async fetchReportTasks({ page = 1, pageSize = 10, filters = {} } = {}) {
+    async fetchReportTasks({ page = 1, pageSize = 10, includeAll = false, statusFilter = 'all' } = {}) {
       this.setLoading('reports', true)
       try {
         const response = await getTasksList({
           type: 'reportHandling',
           page,
           pageSize,
-          ...filters
+          includeAll,
+          statusFilter
         })
-        
         if (response.error === 0) {
           this.setReportTasks(response.body.list || [])
           return response.body

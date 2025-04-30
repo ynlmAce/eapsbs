@@ -13,21 +13,25 @@ import com.bs.eaps.entity.CounselorOperationLog;
 import com.bs.eaps.entity.Company;
 import com.bs.eaps.entity.CounselorProfile;
 import com.bs.eaps.entity.JobPosting;
+import com.bs.eaps.entity.Report;
 import com.bs.eaps.mapper.CounselorTaskMapper;
 import com.bs.eaps.mapper.CounselorOperationLogMapper;
 import com.bs.eaps.mapper.CompanyMapper;
 import com.bs.eaps.mapper.CounselorProfileMapper;
 import com.bs.eaps.mapper.JobPostingMapper;
+import com.bs.eaps.mapper.ReportMapper;
 import com.bs.eaps.service.CounselorService;
 import com.bs.eaps.service.JobTagRelationService;
 import com.bs.eaps.service.JobWelfareService;
 import com.bs.eaps.utils.SecurityUtils;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -56,6 +60,7 @@ public class CounselorServiceImpl implements CounselorService {
     private final JobPostingMapper jobPostingMapper;
     private final JobTagRelationService jobTagRelationService;
     private final JobWelfareService jobWelfareService;
+    private final ReportMapper reportMapper;
 
     /**
      * 获取辅导员待处理的各类任务数量统计
@@ -64,13 +69,11 @@ public class CounselorServiceImpl implements CounselorService {
     public TaskCountDTO getTasksCount() {
         TaskCountDTO result = new TaskCountDTO();
 
-        // 统计企业认证任务数量
         Integer companyCertCount = counselorTaskMapper.countByType("companyCertification");
-        // 统计岗位审核任务数量
         Integer jobAuditCount = counselorTaskMapper.countByType("jobAudit");
-        // 统计举报处理任务数量
-        Integer reportHandlingCount = counselorTaskMapper.countByType("reportHandling");
-        // 统计任务总数
+        // 统计举报处理任务数量（查report表）
+        Integer reportHandlingCount = reportMapper.selectCount(
+                new QueryWrapper<Report>().eq("status", "pending")).intValue();
         Integer totalCount = counselorTaskMapper.countPendingTasks();
 
         result.setCompanyCertification(companyCertCount);
@@ -396,10 +399,24 @@ public class CounselorServiceImpl implements CounselorService {
             }
         } else if ("reportHandling".equals(task.getType())) {
             // 处理举报任务
-            // TODO: 根据举报对象类型和处理结果执行相应操作
             log.info("处理举报任务: type={}, itemId={}, 操作={}",
                     task.getTargetItemType(), task.getTargetItemId(), action);
-            // 这里需要根据不同的举报对象类型执行不同的操作
+            Long reportId = task.getTargetItemId();
+            if ("remove".equals(action)) {
+                // 删除举报记录
+                int deleted = reportMapper.deleteById(reportId);
+                log.info("已删除举报记录，reportId={}, 删除结果={}", reportId, deleted);
+            } else if ("ignore".equals(action)) {
+                // 忽略举报，更新状态为resolved
+                Report report = reportMapper.selectById(reportId);
+                if (report != null) {
+                    report.setStatus("resolved");
+                    report.setCounselorId(profile.getId());
+                    report.setResolution(taskProcessDTO.getReason());
+                    report.setResolvedAt(LocalDateTime.now());
+                    reportMapper.updateById(report);
+                }
+            }
         }
 
         result.setSuccess(true);
@@ -487,7 +504,7 @@ public class CounselorServiceImpl implements CounselorService {
         // 转换为DTO对象
         CounselorProfileDTO profileDTO = new CounselorProfileDTO();
         BeanUtils.copyProperties(profile, profileDTO);
-
+        profileDTO.setId(profile.getId());
         return profileDTO;
     }
 

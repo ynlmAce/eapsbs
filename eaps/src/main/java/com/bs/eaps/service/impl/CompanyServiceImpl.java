@@ -556,4 +556,37 @@ public class CompanyServiceImpl implements CompanyService {
             throw new RuntimeException("获取企业详情失败: " + e.getMessage(), e);
         }
     }
+
+    @Override
+    public Object getCompanyJobList(Long companyId, Integer page, Integer pageSize) {
+        if (companyId == null) {
+            throw new IllegalArgumentException("企业ID不能为空");
+        }
+        if (page == null || page < 1)
+            page = 1;
+        if (pageSize == null || pageSize < 1)
+            pageSize = 10;
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.bs.eaps.entity.JobPosting> queryWrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        queryWrapper.eq(com.bs.eaps.entity.JobPosting::getCompanyId, companyId)
+                .eq(com.bs.eaps.entity.JobPosting::getStatus, com.bs.eaps.common.Constants.JobStatus.RECRUITING)
+                .ge(com.bs.eaps.entity.JobPosting::getValidUntil, java.time.LocalDate.now())
+                .orderByDesc(com.bs.eaps.entity.JobPosting::getPublishedAt);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.bs.eaps.entity.JobPosting> jobPage = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                page, pageSize);
+        jobPostingMapper.selectPage(jobPage, queryWrapper);
+        java.util.List<java.util.Map<String, Object>> jobList = new java.util.ArrayList<>();
+        for (com.bs.eaps.entity.JobPosting job : jobPage.getRecords()) {
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", job.getId());
+            map.put("title", job.getTitle());
+            map.put("salary", job.getSalary());
+            map.put("location", job.getLocation());
+            map.put("publishedAt", job.getPublishedAt());
+            jobList.add(map);
+        }
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("total", jobPage.getTotal());
+        result.put("list", jobList);
+        return result;
+    }
 }

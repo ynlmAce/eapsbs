@@ -8,6 +8,7 @@ import com.bs.eaps.entity.StudentProfile;
 import com.bs.eaps.entity.StudentResumeFile;
 import com.bs.eaps.entity.StudentSkill;
 import com.bs.eaps.entity.StudentStructuredResume;
+import com.bs.eaps.entity.CounselorProfile;
 import com.bs.eaps.mapper.SkillTagMapper;
 import com.bs.eaps.mapper.StudentSkillMapper;
 import com.bs.eaps.service.StudentService;
@@ -25,6 +26,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.bs.eaps.mapper.CounselorProfileMapper;
+
 /**
  * 学生模块控制器
  */
@@ -37,6 +40,7 @@ public class StudentController {
     private final StudentService studentService;
     private final SkillTagMapper skillTagMapper;
     private final StudentSkillMapper studentSkillMapper;
+    private final CounselorProfileMapper counselorProfileMapper;
 
     /**
      * 获取学生档案
@@ -522,6 +526,118 @@ public class StudentController {
             return ApiResponse.success(skillTags);
         } catch (Exception e) {
             log.error("获取学生技能标签异常", e);
+            return ApiResponse.businessError(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取学生列表，支持多条件筛选
+     * 
+     * @param params 查询参数
+     * @return 学生列表
+     */
+    @PostMapping("/list")
+    public ApiResponse getStudentList(@RequestBody Map<String, Object> params) {
+        try {
+            LambdaQueryWrapper<StudentProfile> query = new LambdaQueryWrapper<>();
+            if (params != null) {
+                if (params.get("name") != null && !params.get("name").toString().isEmpty()) {
+                    query.like(StudentProfile::getName, params.get("name").toString());
+                }
+                if (params.get("studentId") != null && !params.get("studentId").toString().isEmpty()) {
+                    query.eq(StudentProfile::getUserId, params.get("studentId").toString());
+                }
+                if (params.get("major") != null && !params.get("major").toString().isEmpty()) {
+                    query.like(StudentProfile::getMajor, params.get("major").toString());
+                }
+                if (params.get("grade") != null && !params.get("grade").toString().isEmpty()) {
+                    query.eq(StudentProfile::getGrade, params.get("grade").toString());
+                }
+                if (params.get("counselorAssigned") != null) {
+                    boolean assigned = Boolean.parseBoolean(params.get("counselorAssigned").toString());
+                    if (assigned) {
+                        query.isNotNull(StudentProfile::getCounselorId);
+                    } else {
+                        query.isNull(StudentProfile::getCounselorId);
+                    }
+                }
+            }
+            List<StudentProfile> list = studentService.list(query);
+            List<Map<String, Object>> voList = new ArrayList<>();
+            for (StudentProfile s : list) {
+                Map<String, Object> vo = new HashMap<>();
+                vo.put("id", s.getId());
+                vo.put("userId", s.getUserId());
+                vo.put("name", s.getName());
+                vo.put("studentId", s.getId());
+                vo.put("major", s.getMajor());
+                vo.put("grade", s.getGrade());
+                vo.put("counselorId", s.getCounselorId());
+                String counselorName = null;
+                if (s.getCounselorId() != null) {
+                    CounselorProfile counselor = counselorProfileMapper.selectById(s.getCounselorId());
+                    if (counselor != null) {
+                        counselorName = counselor.getName();
+                    }
+                }
+                vo.put("counselorName", counselorName);
+                voList.add(vo);
+            }
+            Map<String, Object> body = new HashMap<>();
+            body.put("list", voList);
+            return ApiResponse.success(body);
+        } catch (Exception e) {
+            log.error("获取学生列表异常", e);
+            return ApiResponse.businessError(e.getMessage());
+        }
+    }
+
+    /**
+     * 批量分配学生到辅导员
+     * 
+     * @param params {counselorId, studentIds}
+     * @return 处理结果
+     */
+    @PostMapping("/assign-counselor")
+    public ApiResponse assignStudentsToCounselor(@RequestBody Map<String, Object> params) {
+        try {
+            if (params == null || !params.containsKey("counselorId") || !params.containsKey("studentIds")) {
+                return ApiResponse.businessError("参数不完整");
+            }
+            Long counselorId = null;
+            Object counselorIdObj = params.get("counselorId");
+            if (counselorIdObj instanceof Number) {
+                counselorId = ((Number) counselorIdObj).longValue();
+            } else if (counselorIdObj instanceof String) {
+                counselorId = Long.parseLong((String) counselorIdObj);
+            }
+            @SuppressWarnings("unchecked")
+            List<Object> studentIdsRaw = (List<Object>) params.get("studentIds");
+            if (studentIdsRaw == null || studentIdsRaw.isEmpty()) {
+                return ApiResponse.businessError("未选择学生");
+            }
+            List<Long> studentIds = new ArrayList<>();
+            for (Object idObj : studentIdsRaw) {
+                if (idObj instanceof Number) {
+                    studentIds.add(((Number) idObj).longValue());
+                } else if (idObj instanceof String) {
+                    studentIds.add(Long.parseLong((String) idObj));
+                }
+            }
+            // 批量更新
+            int updated = 0;
+            for (Long studentId : studentIds) {
+                StudentProfile profile = studentService.getById(studentId);
+                if (profile != null) {
+                    profile.setCounselorId(counselorId);
+                    boolean ok = studentService.updateById(profile);
+                    if (ok)
+                        updated++;
+                }
+            }
+            return ApiResponse.success(updated);
+        } catch (Exception e) {
+            log.error("批量分配学生到辅导员异常", e);
             return ApiResponse.businessError(e.getMessage());
         }
     }

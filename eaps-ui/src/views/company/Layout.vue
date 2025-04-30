@@ -31,7 +31,7 @@
       <el-container>
         <el-header>
           <div class="header-container">
-            <div class="logo">大学生就业帮扶系统</div>
+            <div class="logo">大学生就业帮扶平台</div>
             <div class="user-info">
               <el-dropdown>
                 <span class="user-dropdown-link">

@@ -75,4 +75,13 @@ public interface ChatService {
      * @return 用户ID列表
      */
     List<Long> getParticipantIdsBySessionId(Long sessionId);
+
+    /**
+     * 创建学生-辅导员聊天会话
+     * 
+     * @param studentUserId 学生用户ID
+     * @param counselorId   辅导员档案ID
+     * @return 会话ID或相关信息
+     */
+    Object createStudentCounselorSession(Long studentUserId, Long counselorId);
 }

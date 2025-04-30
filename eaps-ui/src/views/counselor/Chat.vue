@@ -52,7 +52,12 @@
       <template v-if="currentSession">
         <div class="chat-header">
           <div class="header-title">
-            {{ currentSession.title || currentSession.name }}
+            <template v-if="currentSession && currentSession.type === 'SC'">
+              <span>{{ currentSession.participantInfo?.name || currentSession.title || currentSession.name || '学生' }}</span>
+            </template>
+            <template v-else>
+              {{ currentSession.title || currentSession.name }}
+            </template>
             <el-tag v-if="currentSession.isReadOnly" size="small" type="info">只读</el-tag>
           </div>
           <div class="header-actions">
@@ -91,11 +96,11 @@
               ></el-avatar>
               
               <div class="message-content">
-                <template v-if="message.contentType === 'text'">
+                <template v-if="message.contentType === 'text' || message.type === 'text'">
                   <div class="message-text">{{ message.content }}</div>
                 </template>
                 
-                <template v-else-if="message.contentType === 'image'">
+                <template v-else-if="message.contentType === 'image' || message.type === 'image'">
                   <div class="message-image">
                     <el-image
                       :src="message.filePath"
@@ -106,7 +111,7 @@
                   </div>
                 </template>
                 
-                <template v-else-if="message.contentType === 'file'">
+                <template v-else-if="message.contentType === 'file' || message.type === 'file'">
                   <div class="message-file">
                     <i class="el-icon-document"></i>
                     <a :href="message.filePath" target="_blank">{{ message.fileName || message.content || '文件' }}</a>
@@ -221,7 +226,7 @@ import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElLoading } from 'element-plus'
 import { getChatSessions, getChatMessages, sendChatMessage, markMessageRead, uploadChatFile } from '@/api/chat'
-import { userStore } from '@/stores/user'
+import { useUserStore } from '@/store/user'
 
 // 路由和状态管理
 const route = useRoute()
@@ -246,6 +251,10 @@ const loadingMore = ref(false)
 const imageInput = ref(null)
 const fileInput = ref(null)
 let autoRetryTimer = null
+const defaultAvatar = '/static/img/default-avatar.png'
+
+// 路由和状态管理
+const userStore = useUserStore()
 
 // WebSocket 相关
 let ws = null
@@ -367,16 +376,13 @@ const fetchSessions = async (fromRetry = false) => {
   try {
     const response = await getChatSessions()
     
-    if (response && response.list) {
-      console.log('获取到会话列表:', response.list)
-      sessionList.value = response.list
-      
+    if (response && response.body && Array.isArray(response.body.list)) {
+      console.log('获取到会话列表:', response.body.list)
+      sessionList.value = response.body.list
       // 重置重试计数
       loadRetryCount.value = 0
-      
       // 处理URL中的会话ID
       handleSessionFromUrl()
-      
       // 显示明确成功消息
       if (fromRetry) {
         ElMessage.success('会话列表已刷新')
@@ -510,9 +516,10 @@ const fetchMessages = async (sessionId, isLoadMore = false) => {
     }
     
     const response = await getChatMessages(sessionId, params)
+    const body = response?.body || response
     
-    if (response && response.list) {
-      const newMessages = response.list.map(msg => ({
+    if (body && body.list) {
+      const newMessages = body.list.map(msg => ({
         ...msg,
         senderAvatar: msg.senderAvatar || getDefaultAvatar(msg.senderType)
       }))
@@ -525,7 +532,7 @@ const fetchMessages = async (sessionId, isLoadMore = false) => {
         messages.value = newMessages
       }
       
-      hasMoreMessages.value = response.hasMore || false
+      hasMoreMessages.value = body.hasMore || false
       
       // 更新会话未读消息数，标记为已读
       if (currentSession.value) {
@@ -601,7 +608,25 @@ const sendMessage = async () => {
   if (!messageText.value.trim() || !currentSession.value || currentSession.value.isReadOnly) return;
   const content = messageText.value.trim();
   messageText.value = '';
-  // 不再本地插入临时消息，等待WebSocket推送
+  // 生成临时消息ID
+  const tempId = 'temp-' + Date.now();
+  // 本地插入临时消息
+  const tempMessage = {
+    id: tempId,
+    sessionId: currentSession.value.id,
+    senderId: userId.value,
+    senderType: 'counselor',
+    senderName: userName.value,
+    senderAvatar: userAvatar.value,
+    content,
+    contentType: 'text',
+    sentAt: new Date().toISOString(),
+    status: 'sending'
+  };
+  messages.value.push(tempMessage);
+  scrollToBottom();
+  let sent = false;
+  // WebSocket优先
   if (ws && wsConnected.value) {
     try {
       ws.send(
@@ -611,22 +636,34 @@ const sendMessage = async () => {
           contentType: 'text',
         })
       );
-      // 等待WebSocket推送
+      sent = true;
+      // 等待WebSocket推送来更新消息状态
       return;
     } catch (e) {
-      console.error('WebSocket发送失败，降级API', e);
+      // 降级API
     }
   }
   // 降级API
   try {
     const messageData = { content, contentType: 'text' };
     const res = await sendChatMessage(currentSession.value.id, messageData);
-    // 不再本地插入消息，等待WebSocket推送
-    if (!(res && typeof res === 'object' && (res.messageId || res.id))) {
-      ElMessage.error(res?.message || '发送消息失败');
+    if (res && res.error === 0) {
+      // API返回成功，更新临时消息为已发送
+      const index = messages.value.findIndex(m => m.id === tempId);
+      if (index !== -1) {
+        messages.value[index].status = 'sent';
+      }
+      sent = true;
+    } else {
+      throw new Error(res?.message || '发送消息失败');
     }
   } catch (error) {
-    ElMessage.error('发送消息失败，请稍后重试');
+    // 发送失败，更新临时消息状态并提示
+    const index = messages.value.findIndex(m => m.id === tempId);
+    if (index !== -1) {
+      messages.value[index].status = 'failed';
+    }
+    ElMessage.error(error.message || '发送消息失败，请稍后重试');
   }
 };
 
@@ -875,7 +912,29 @@ const handleWsMessage = (event) => {
           ? (userStore.userInfo.name || '我')
           : (currentSession.value?.participantInfo?.name || '对方');
         let avatar = isSelf ? userStore.userInfo.avatar || defaultAvatar : (currentSession.value?.avatar || defaultAvatar);
-        if (!messages.value.some(m => m.id === msg.messageId || m.id === msg.id)) {
+        // 查找本地临时消息
+        const tempIndex = messages.value.findIndex(m =>
+          m.status === 'sending' &&
+          m.content === msg.content &&
+          m.senderId === msg.senderId
+        );
+        if (tempIndex !== -1) {
+          // 用正式消息替换临时消息
+          messages.value[tempIndex] = {
+            ...messages.value[tempIndex],
+            id: msg.messageId || msg.id,
+            status: 'sent',
+            type: (msg.contentType || 'text').toLowerCase(),
+            sentAt: msg.sentAt,
+            file: msg.contentType === 'FILE' ? {
+              name: msg.fileName || '文件',
+              path: msg.filePath || '',
+              size: msg.fileSize || 0
+            } : null
+          };
+          nextTick(scrollToBottom);
+        } else if (!messages.value.some(m => m.id === msg.messageId || m.id === msg.id)) {
+          // 不存在则push新消息
           messages.value.push({
             id: msg.messageId || msg.id,
             content: msg.content,
@@ -883,7 +942,7 @@ const handleWsMessage = (event) => {
             senderName,
             isSelf,
             avatar,
-            time: formatMessageTime(msg.sentAt || new Date()),
+            time: formatFullTime(msg.sentAt || new Date()),
             sentAt: msg.sentAt,
             file: msg.contentType === 'FILE' ? {
               name: msg.fileName || '文件',

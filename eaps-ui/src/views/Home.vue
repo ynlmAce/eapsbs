@@ -3,7 +3,7 @@
     <!-- 顶部导航栏 -->
     <header class="header">
       <div class="logo-container">
-        <h1 class="logo-text">大学生就业帮扶系统</h1>
+        <h1 class="logo-text">大学生就业帮扶平台</h1>
       </div>
       <div class="nav-links">
         <router-link to="/" class="nav-link active">首页</router-link>
@@ -139,7 +139,7 @@
       <div class="footer-content">
         <div class="footer-section">
           <h3>关于平台</h3>
-          <p>大学生就业帮扶系统是为大学生和企业搭建的桥梁，旨在促进大学生顺利就业。</p>
+          <p>大学生就业帮扶平台是为大学生和企业搭建的桥梁，旨在促进大学生顺利就业。</p>
         </div>
         <div class="footer-section">
           <h3>联系我们</h3>
@@ -156,7 +156,7 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; 2025 大学生就业帮扶系统 版权所有</p>
+        <p>&copy; 2025 大学生就业帮扶平台 版权所有</p>
       </div>
     </footer>
   </div>

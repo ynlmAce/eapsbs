@@ -47,9 +47,39 @@
         <el-divider />
         
         <div class="company-description">
-          <h3>公司简介</h3>
-          <p v-if="company.description">{{ company.description }}</p>
-          <p v-else class="no-data">暂无公司简介</p>
+          <h3>公司信息</h3>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="企业名称">{{ company.name || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="统一社会信用代码">{{ company.unifiedSocialCreditCode || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="行业">{{ company.industry || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="规模">{{ company.size || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="地址">{{ company.address || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="HR联系方式">{{ (company.hrContact && company.hrContact.phone) ? company.hrContact.phone : '-' }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
+        
+        <div class="company-jobs">
+          <h3>在招岗位</h3>
+          <el-table :data="jobList" v-loading="loadingJobs" style="width: 100%" size="small" border>
+            <el-table-column prop="title" label="岗位名称" min-width="120" />
+            <el-table-column prop="salary" label="薪资" min-width="100" />
+            <el-table-column prop="location" label="工作地点" min-width="120" />
+            <el-table-column prop="publishedAt" label="发布时间" min-width="120">
+              <template #default="scope">
+                {{ formatDate(scope.row.publishedAt) }}
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="pagination" v-if="jobsTotal > pageSize">
+            <el-pagination
+              background
+              layout="prev, pager, next"
+              :total="jobsTotal"
+              :page-size="pageSize"
+              :current-page="jobsPage"
+              @current-change="handleJobsPageChange"
+            />
+          </div>
         </div>
         
         <div class="company-contact" v-if="company.hrContact">
@@ -159,7 +189,8 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { getCompanyProfile } from '@/api/company';
+// import { getCompanyProfile, getCompanyJobs } from '@/api/company';
+import { getCompanyProfile, getCompanyJobs, getCompanyDetail } from '@/api/company';
 import { getCompanyRatings, getCompanyRatingOverview } from '@/api/rating';
 import { ElLoading, ElMessage } from 'element-plus';
 import RatingList from '@/components/RatingList.vue';
@@ -196,6 +227,12 @@ const ratingOverview = ref({
   ratingCount: 0
 });
 
+// 岗位相关数据
+const jobList = ref([]);
+const loadingJobs = ref(false);
+const jobsTotal = ref(0);
+const jobsPage = ref(1);
+
 // 监听公司ID变化
 watch(() => props.companyId, (newVal) => {
   if (newVal) {
@@ -210,7 +247,8 @@ const fetchCompanyData = async () => {
   loading.value = true;
   
   try {
-    const companyData = await getCompanyProfile(props.companyId);
+    // const companyData = await getCompanyProfile(props.companyId);
+    const companyData = await getCompanyDetail(props.companyId);
     company.value = companyData;
     
     // 获取评分概览
@@ -218,6 +256,9 @@ const fetchCompanyData = async () => {
     
     // 获取评价列表
     await fetchRatings();
+
+    // 获取岗位列表
+    await fetchCompanyJobs();
   } catch (error) {
     console.error('获取公司信息失败:', error);
     ElMessage.error('获取公司信息失败，请稍后重试');
@@ -259,10 +300,31 @@ const fetchRatings = async () => {
   }
 };
 
+// 获取岗位列表
+const fetchCompanyJobs = async () => {
+  loadingJobs.value = true;
+  try {
+    const res = await getCompanyJobs({ companyId: props.companyId, page: jobsPage.value, limit: pageSize.value });
+    jobList.value = res.list || [];
+    jobsTotal.value = res.total || 0;
+  } catch (e) {
+    jobList.value = [];
+    jobsTotal.value = 0;
+  } finally {
+    loadingJobs.value = false;
+  }
+};
+
 // 处理分页
 const handlePageChange = (page) => {
   currentPage.value = page;
   fetchRatings();
+};
+
+// 处理岗位分页
+const handleJobsPageChange = (page) => {
+  jobsPage.value = page;
+  fetchCompanyJobs();
 };
 
 // 格式化评分

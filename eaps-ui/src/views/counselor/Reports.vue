@@ -457,7 +457,7 @@ const loadReportTasks = async () => {
     const taskId = route.query.taskId
     
     if (fromDashboard && taskId) {
-      filters.taskId = taskId
+      // filters.taskId = taskId // 移除这行，避免传递taskId
     }
     
     const result = await counselorStore.fetchReportTasks({

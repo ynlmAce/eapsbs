@@ -685,4 +685,43 @@ public class ChatServiceImpl implements ChatService {
         }
         return ids;
     }
+
+    @Override
+    @Transactional
+    public Object createStudentCounselorSession(Long studentUserId, Long counselorId) {
+        log.info("创建学生-辅导员会话: studentUserId={}, counselorId={}", studentUserId, counselorId);
+        if (studentUserId == null || counselorId == null) {
+            throw new IllegalArgumentException("参数不完整");
+        }
+        // 查找辅导员userId
+        Long counselorUserId = counselorProfileMapper.selectUserIdById(counselorId);
+        if (counselorUserId == null) {
+            throw new IllegalArgumentException("未找到辅导员用户");
+        }
+        // 检查是否已存在SC类型会话
+        LambdaQueryWrapper<ChatSession> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ChatSession::getType, "SC");
+        queryWrapper.and(wrapper -> wrapper.and(w -> w.eq(ChatSession::getParticipant1Id, studentUserId)
+                .eq(ChatSession::getParticipant2Id, counselorUserId))
+                .or(w -> w.eq(ChatSession::getParticipant1Id, counselorUserId)
+                        .eq(ChatSession::getParticipant2Id, studentUserId)));
+        ChatSession existing = chatSessionMapper.selectOne(queryWrapper);
+        LocalDateTime now = LocalDateTime.now();
+        if (existing != null) {
+            existing.setLastActiveAt(now);
+            chatSessionMapper.updateById(existing);
+            return existing.getId();
+        }
+        // 创建新会话
+        ChatSession session = new ChatSession();
+        session.setType("SC");
+        session.setParticipant1Id(studentUserId);
+        session.setParticipant2Id(counselorUserId);
+        session.setStatus("active");
+        session.setIsReadonly(false);
+        session.setCreatedAt(now);
+        session.setLastActiveAt(now);
+        chatSessionMapper.insert(session);
+        return session.getId();
+    }
 }

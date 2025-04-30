@@ -279,13 +279,11 @@ const loadJobList = async (isRetry = false) => {
       
       const params = {
         page: currentPage.value,
-        limit: pageSize.value,
+        pageSize: pageSize.value,
         keyword: searchForm.keyword || null,
         location: searchForm.location || null,
         jobType: searchForm.jobType || null,
-        salaryMin,
-        salaryMax,
-        _t: timestamp  // 添加时间戳防止缓存
+        salary: searchForm.salaryRange || null
       }
 
       console.log('请求参数:', params)

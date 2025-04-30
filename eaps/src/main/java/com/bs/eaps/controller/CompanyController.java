@@ -219,15 +219,34 @@ public class CompanyController {
      */
     @PostMapping("/company/detail")
     public ApiResponse getCompanyDetail(@RequestBody Map<String, Object> params) {
-        Long companyId = params.containsKey("companyId") ? ((Number) params.get("companyId")).longValue() : null;
-
+        Object idObj = params.get("companyId");
+        Long companyId = null;
+        if (idObj instanceof Number) {
+            companyId = ((Number) idObj).longValue();
+        } else if (idObj instanceof String) {
+            try {
+                companyId = Long.valueOf((String) idObj);
+            } catch (Exception e) {
+                return ApiResponse.businessError("企业ID格式不正确");
+            }
+        }
         if (companyId == null) {
             return ApiResponse.businessError("企业ID不能为空");
         }
-
-        log.info("获取企业详情: companyId={}", companyId);
-
-        // 调用服务获取企业详细信息
         return ApiResponse.success(companyService.getCompanyDetailById(companyId));
+    }
+
+    /**
+     * 获取企业岗位列表（分页）
+     */
+    @PostMapping("/company/jobs")
+    public ApiResponse getCompanyJobs(@RequestBody Map<String, Object> params) {
+        Long companyId = params.get("companyId") == null ? null : Long.valueOf(params.get("companyId").toString());
+        Integer page = params.get("page") == null ? 1 : Integer.valueOf(params.get("page").toString());
+        Integer pageSize = params.get("pageSize") == null ? 10 : Integer.valueOf(params.get("pageSize").toString());
+        if (companyId == null) {
+            return ApiResponse.businessError("企业ID不能为空");
+        }
+        return ApiResponse.success(companyService.getCompanyJobList(companyId, page, pageSize));
     }
 }

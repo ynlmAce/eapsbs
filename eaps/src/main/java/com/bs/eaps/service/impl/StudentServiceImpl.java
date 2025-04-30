@@ -1,6 +1,7 @@
 package com.bs.eaps.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.bs.eaps.common.BusinessException;
 import com.bs.eaps.common.Constants;
 import com.bs.eaps.entity.StudentProfile;
@@ -40,7 +41,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class StudentServiceImpl implements StudentService {
+public class StudentServiceImpl extends ServiceImpl<StudentProfileMapper, StudentProfile> implements StudentService {
 
     private final StudentProfileMapper studentProfileMapper;
     private final StudentResumeFileMapper studentResumeFileMapper;

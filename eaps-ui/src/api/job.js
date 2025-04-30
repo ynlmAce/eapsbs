@@ -16,10 +16,9 @@ import { handleResponse } from '@/utils/api'
  * @returns {Promise} - 返回岗位列表
  */
 export function getJobList(params) {
-  // 添加时间戳，避免缓存问题
+  // 移除_t字段，避免后端报错
   const queryParams = {
-    ...params,
-    _t: new Date().getTime()
+    ...params
   };
   
   return request({

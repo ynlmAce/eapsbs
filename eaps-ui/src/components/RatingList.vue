@@ -158,13 +158,11 @@ const reportRating = async (ratingId) => {
     
     if (reason.value.trim()) {
       isReportingLoading[ratingId] = true;
-      
       const result = await reportRatingAPI(ratingId, reason.value.trim());
-      
-      if (result && result.error === 0) {
+      if (result === true) {
         ElMessage.success('举报成功，我们会尽快处理');
       } else {
-        ElMessage.error(result?.message || '举报失败，请稍后重试');
+        ElMessage.error('举报失败，请稍后重试');
       }
     }
   } catch (error) {

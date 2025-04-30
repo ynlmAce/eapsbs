@@ -611,4 +611,30 @@ export function getEducationExperiences() {
     console.error('获取教育经历请求失败:', error);
     throw error;
   });
+}
+
+/**
+ * 获取学生列表，支持多条件筛选
+ * @param {Object} params - 筛选参数
+ * @returns {Promise}
+ */
+export function getStudentList(params = {}) {
+  return request({
+    url: '/api/student/list',
+    method: 'post',
+    data: params
+  })
+}
+
+/**
+ * 批量分配学生到辅导员
+ * @param {Object} params - { counselorId, studentIds }
+ * @returns {Promise}
+ */
+export function assignStudentsToCounselor(params) {
+  return request({
+    url: '/api/student/assign-counselor',
+    method: 'post',
+    data: params
+  })
 } 

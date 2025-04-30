@@ -8,6 +8,13 @@
           prefix-icon="el-icon-search"
           clearable
         />
+        <el-button
+          type="primary"
+          size="small"
+          style="margin-top: 10px; width: 100%;"
+          :loading="contactingCounselor"
+          @click="contactCounselor"
+        >联系辅导员</el-button>
       </div>
 
       <div class="session-list">
@@ -47,7 +54,9 @@
             </el-badge>
             <div class="session-info">
               <div class="session-header">
-                <span class="session-name">{{ getSessionName(session) }}</span>
+                <span class="session-name">{{
+                  getSessionName(session)
+                }}</span>
                 <span class="session-time">{{
                   formatTime(session.lastMessageTime)
                 }}</span>
@@ -317,7 +326,9 @@ import {
   markSessionRead,
   uploadChatFile,
   reportChatMessage,
+  createStudentCounselorSession,
 } from "@/api/chat";
+import { getStudentProfile } from "@/api/student";
 import { useUserStore } from "@/store/user";
 
 // 添加全局应急恢复函数
@@ -528,7 +539,7 @@ const getSessionAvatar = (session) => {
 
 // 获取会话名称
 const getSessionName = (session) => {
-  return session.name || (session.type === "company" ? "企业" : "辅导员");
+  return session.participantInfo?.name || session.name || session.title || getSessionTypeText(session.type);
 };
 
 // 获取会话类型显示文本
@@ -1395,6 +1406,46 @@ const sendTextMessage = async () => {
     ElMessage.error("发送消息失败，请稍后重试");
   }
 };
+
+const contactingCounselor = ref(false)
+
+const contactCounselor = async () => {
+  if (contactingCounselor.value) return
+  contactingCounselor.value = true
+  try {
+    // 获取学生档案，拿到辅导员ID
+    const res = await getStudentProfile()
+    const counselorId = res?.body?.counselorId
+    if (!counselorId) {
+      ElMessage.error('未找到辅导员信息，无法发起会话')
+      return
+    }
+    // 检查是否已有与辅导员的会话
+    const exist = sessions.value.find(s => s.type === 'counselor' && s.participantId === counselorId)
+    if (exist) {
+      selectSession(exist)
+      ElMessage.success('已切换到辅导员会话')
+      return
+    }
+    // 创建新会话
+    const createRes = await createStudentCounselorSession({ counselorId })
+    if (createRes && createRes.error === 0 && createRes.body) {
+      await loadSessions(true)
+      // 自动切换到新会话
+      const newSession = sessions.value.find(s => s.type === 'counselor' && s.participantId === counselorId)
+      if (newSession) {
+        selectSession(newSession)
+      }
+      ElMessage.success('已发起与辅导员的会话')
+    } else {
+      ElMessage.error(createRes?.message || '发起会话失败')
+    }
+  } catch (e) {
+    ElMessage.error('联系辅导员失败')
+  } finally {
+    contactingCounselor.value = false
+  }
+}
 </script>
 
 <style scoped>

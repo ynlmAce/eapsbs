@@ -5,10 +5,13 @@ import com.bs.eaps.dto.rating.RatingSubmitDTO;
 import com.bs.eaps.entity.Rating;
 import com.bs.eaps.entity.JobPosting;
 import com.bs.eaps.entity.StudentProfile;
+import com.bs.eaps.entity.Report;
 import com.bs.eaps.mapper.RatingMapper;
 import com.bs.eaps.mapper.JobPostingMapper;
 import com.bs.eaps.mapper.StudentProfileMapper;
+import com.bs.eaps.mapper.ReportMapper;
 import com.bs.eaps.service.RatingService;
+import com.bs.eaps.service.CounselorTaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +34,8 @@ public class RatingServiceImpl implements RatingService {
     private final RatingMapper ratingMapper;
     private final JobPostingMapper jobPostingMapper;
     private final StudentProfileMapper studentProfileMapper;
+    private final ReportMapper reportMapper;
+    private final CounselorTaskService counselorTaskService;
 
     @Override
     @Transactional
@@ -143,5 +148,67 @@ public class RatingServiceImpl implements RatingService {
         }
 
         return result;
+    }
+
+    @Override
+    public Object getCompanyRatingOverview(Long companyId) {
+        if (companyId == null) {
+            throw new IllegalArgumentException("企业ID不能为空");
+        }
+        Map<String, Object> avg = ratingMapper.calculateCompanyAverageScore(companyId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("overallAvg", avg != null && avg.get("overallAvg") != null ? avg.get("overallAvg") : 0.0);
+        result.put("jobAuthenticityAvg",
+                avg != null && avg.get("jobAuthenticityAvg") != null ? avg.get("jobAuthenticityAvg") : 0.0);
+        result.put("interviewExperienceAvg",
+                avg != null && avg.get("interviewExperienceAvg") != null ? avg.get("interviewExperienceAvg") : 0.0);
+        result.put("workEnvironmentAvg",
+                avg != null && avg.get("workEnvironmentAvg") != null ? avg.get("workEnvironmentAvg") : 0.0);
+        result.put("welfareDeliveryAvg",
+                avg != null && avg.get("welfareDeliveryAvg") != null ? avg.get("welfareDeliveryAvg") : 0.0);
+        result.put("ratingCount", avg != null && avg.get("ratingCount") != null ? avg.get("ratingCount") : 0);
+        return result;
+    }
+
+    @Override
+    public Object getCompanyRatings(Long companyId, Integer page, Integer pageSize, String sortBy) {
+        if (companyId == null) {
+            throw new IllegalArgumentException("企业ID不能为空");
+        }
+        String sortField = "submitted_at";
+        if ("score".equalsIgnoreCase(sortBy)) {
+            sortField = "overall_score";
+        }
+        Page<Map<String, Object>> pageParam = new Page<>(page != null ? page : 1, pageSize != null ? pageSize : 10);
+        Page<Map<String, Object>> ratings = ratingMapper.selectCompanyRatings(pageParam, companyId, sortField);
+        Map<String, Object> result = new HashMap<>();
+        result.put("total", ratings.getTotal());
+        result.put("list", ratings.getRecords());
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        return result;
+    }
+
+    @Override
+    public boolean reportRating(Long userId, Long ratingId, String reason) {
+        if (userId == null || ratingId == null || reason == null || reason.isEmpty()) {
+            return false;
+        }
+        Report report = new Report();
+        report.setReportingUserId(userId);
+        report.setReportedItemType("rating");
+        report.setReportedItemId(ratingId);
+        report.setReason(reason);
+        report.setReportedAt(LocalDateTime.now());
+        report.setStatus("Pending");
+        boolean inserted = reportMapper.insert(report) > 0;
+        if (inserted) {
+            // 自动生成举报处理任务
+            counselorTaskService.createReportHandlingTask(
+                    report.getReportedItemType(),
+                    report.getId(),
+                    "举报处理: " + report.getReportedItemType() + "-" + report.getId());
+        }
+        return inserted;
     }
 }

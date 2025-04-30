@@ -112,4 +112,14 @@ public interface CompanyService {
      * @return 企业详细信息
      */
     Map<String, Object> getCompanyDetailById(Long companyId);
+
+    /**
+     * 获取企业岗位分页列表
+     * 
+     * @param companyId 企业ID
+     * @param page      页码
+     * @param pageSize  每页条数
+     * @return 岗位分页数据
+     */
+    Object getCompanyJobList(Long companyId, Integer page, Integer pageSize);
 }
