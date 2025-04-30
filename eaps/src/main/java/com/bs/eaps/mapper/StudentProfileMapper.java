@@ -9,4 +9,8 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface StudentProfileMapper extends BaseMapper<StudentProfile> {
+    /**
+     * 根据userId查找学生姓名
+     */
+    String selectNameByUserId(Long userId);
 }

@@ -863,32 +863,42 @@ const deleteSession = async (sessionId) => {
 // WebSocket 消息处理
 const handleWsMessage = (event) => {
   try {
-    const data = JSON.parse(event.data)
-    if (data && data.type === 'chat_message') {
-      // 判断消息是否属于当前会话
-      if (currentSession.value && data.sessionId === currentSession.value.id) {
-        // 插入消息到当前会话
-        messages.value.push({
-          ...data.message,
-          senderAvatar: data.message.senderAvatar || getDefaultAvatar(data.message.senderType)
-        })
-        scrollToBottom()
-        // 标记为已读
-        markMessageRead(currentSession.value.id)
-      } else {
-        // 更新会话未读数
-        const idx = sessionList.value.findIndex(s => s.id === data.sessionId)
-        if (idx !== -1) {
-          sessionList.value[idx].unreadCount = (sessionList.value[idx].unreadCount || 0) + 1
-          sessionList.value[idx].lastMessage = data.message
-          sessionList.value[idx].lastActiveAt = data.message.sentAt
+    const data = JSON.parse(event.data);
+    if (data && data.type === 'chat_message' && data.sessionId && data.message) {
+      if (
+        currentSession.value &&
+        data.sessionId === currentSession.value.id
+      ) {
+        const msg = data.message;
+        const isSelf = msg.senderId === userStore.userInfo.id;
+        let senderName = isSelf
+          ? (userStore.userInfo.name || '我')
+          : (currentSession.value?.participantInfo?.name || '对方');
+        let avatar = isSelf ? userStore.userInfo.avatar || defaultAvatar : (currentSession.value?.avatar || defaultAvatar);
+        if (!messages.value.some(m => m.id === msg.messageId || m.id === msg.id)) {
+          messages.value.push({
+            id: msg.messageId || msg.id,
+            content: msg.content,
+            type: (msg.contentType || 'text').toLowerCase(),
+            senderName,
+            isSelf,
+            avatar,
+            time: formatMessageTime(msg.sentAt || new Date()),
+            sentAt: msg.sentAt,
+            file: msg.contentType === 'FILE' ? {
+              name: msg.fileName || '文件',
+              path: msg.filePath || '',
+              size: msg.fileSize || 0
+            } : null
+          });
+          nextTick(scrollToBottom);
         }
       }
     }
   } catch (e) {
-    // 忽略解析错误
+    console.error("WebSocket消息解析失败", e);
   }
-}
+};
 
 // 建立WebSocket连接
 const connectWebSocket = () => {

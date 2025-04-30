@@ -69,6 +69,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         try {
             // 解析前端发送的JSON消息
             JsonNode jsonNode = objectMapper.readTree(message.getPayload());
+            // 新增：心跳包处理
+            if (jsonNode.has("type") && "ping".equals(jsonNode.get("type").asText())) {
+                session.sendMessage(new TextMessage("{\"type\":\"pong\"}"));
+                return;
+            }
             Long sessionId = jsonNode.get("sessionId").asLong();
             String content = jsonNode.get("content").asText();
             String contentType = jsonNode.has("contentType") ? jsonNode.get("contentType").asText() : "text";

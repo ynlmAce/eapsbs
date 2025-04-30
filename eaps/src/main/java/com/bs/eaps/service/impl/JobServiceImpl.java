@@ -650,6 +650,7 @@ public class JobServiceImpl implements JobService {
                         Map<String, Object> appDetail = new HashMap<>();
                         appDetail.put("id", app.getId());
                         appDetail.put("studentId", student.getId());
+                        appDetail.put("studentUserId", student.getUserId());
                         appDetail.put("studentName", student.getName());
                         appDetail.put("studentSchool", student.getSchool());
                         appDetail.put("studentMajor", student.getMajor());

@@ -92,6 +92,28 @@
       </div>
     </section>
 
+    <!-- 学生论坛板块 -->
+    <section class="student-forum">
+      <div class="section-title">
+        <h2>学生论坛</h2>
+        <router-link to="/forum" class="view-all">查看更多</router-link>
+      </div>
+      <div class="forum-list">
+        <div class="forum-post" v-for="post in forumPosts" :key="post.id">
+          <div class="forum-header">
+            <router-link :to="`/forum/${post.id}`" class="forum-title">{{ post.title }}</router-link>
+            <span class="forum-meta">{{ post.author }} · {{ post.date }}</span>
+          </div>
+          <div class="forum-content">
+            {{ post.summary }}
+          </div>
+          <div class="forum-footer">
+            <span class="forum-comments"><i class="fas fa-comments"></i> {{ post.comments }} 评论</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 统计数据 -->
     <section class="statistics">
       <div class="stat-item">
@@ -141,7 +163,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { getForumPosts } from '@/api/forum'
 
 // 模拟最新岗位数据
 const latestJobs = ref([
@@ -182,6 +205,24 @@ const latestJobs = ref([
     date: '2025-04-19'
   }
 ])
+
+// 动态获取论坛帖子数据
+const forumPosts = ref([])
+
+onMounted(async () => {
+  // 获取最新4条论坛帖子
+  try {
+    const res = await getForumPosts({ page: 1, pageSize: 4 })
+    forumPosts.value = (res.body || []).map(post => ({
+      id: post.id,
+      title: post.title,
+      author: post.author_name || post.authorName || '',
+      date: (post.created_at || post.createdAt || '').slice(0, 10),
+      summary: post.content ? post.content.slice(0, 60) + (post.content.length > 60 ? '...' : '') : '',
+      comments: post.comment_count || post.commentCount || 0
+    }))
+  } catch {}
+})
 </script>
 
 <style scoped>
@@ -473,6 +514,71 @@ const latestJobs = ref([
 .post-date {
   color: #999;
   font-size: 0.875rem;
+}
+
+/* 学生论坛板块 */
+.student-forum {
+  padding: 4rem 5%;
+  background-color: #f5f5f5;
+}
+
+.forum-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.forum-post {
+  background-color: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+.forum-post:hover {
+  transform: translateY(-5px);
+}
+
+.forum-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.forum-title {
+  font-size: 1.1rem;
+  color: #1976d2;
+  margin: 0;
+}
+
+.forum-meta {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.forum-content {
+  color: #444;
+  margin: 0.5rem 0 1rem 0;
+  flex: 1;
+}
+
+.forum-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  color: #1976d2;
+  font-size: 0.95rem;
+}
+
+.forum-comments {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 /* 统计数据 */

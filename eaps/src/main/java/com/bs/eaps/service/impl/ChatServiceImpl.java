@@ -11,6 +11,8 @@ import com.bs.eaps.entity.ChatSession;
 import com.bs.eaps.mapper.ChatMessageMapper;
 import com.bs.eaps.mapper.ChatSessionMapper;
 import com.bs.eaps.mapper.CompanyProfileMapper;
+import com.bs.eaps.mapper.StudentProfileMapper;
+import com.bs.eaps.mapper.CounselorProfileMapper;
 import com.bs.eaps.service.ChatService;
 import com.bs.eaps.websocket.ChatWebSocketHandler;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,8 @@ public class ChatServiceImpl implements ChatService {
     private final ChatSessionMapper chatSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final CompanyProfileMapper companyProfileMapper;
+    private final StudentProfileMapper studentProfileMapper;
+    private final CounselorProfileMapper counselorProfileMapper;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -85,6 +89,29 @@ public class ChatServiceImpl implements ChatService {
                 } else {
                     otherParticipantId = session.getParticipant1Id();
                 }
+
+                // 查询对方真实姓名
+                String participantName = "";
+                if ("SE".equals(session.getType())) {
+                    participantName = studentProfileMapper.selectNameByUserId(otherParticipantId);
+                    if (participantName == null || participantName.isEmpty()) {
+                        participantName = "学生";
+                    }
+                } else if ("SC".equals(session.getType())) {
+                    participantName = counselorProfileMapper.selectNameByUserId(otherParticipantId);
+                    if (participantName == null || participantName.isEmpty()) {
+                        participantName = "辅导员";
+                    }
+                } else if ("SS".equals(session.getType())) {
+                    sessionMap.put("groupId", session.getGroupId());
+                    // TODO: 可以查询群组名称等信息添加到结果中
+                    sessionMap.put("name", "学生群组"); // 后续可以替换为实际群组名
+                } else {
+                    participantName = "用户";
+                }
+                Map<String, Object> participantInfo = new HashMap<>();
+                participantInfo.put("name", participantName);
+                sessionMap.put("participantInfo", participantInfo);
 
                 // 根据会话类型设置额外信息
                 if ("SE".equals(session.getType())) {
@@ -579,7 +606,7 @@ public class ChatServiceImpl implements ChatService {
         if (messageId != null) {
             result.put("messageId", messageId);
         }
-
+        result.put("isNewSession", existingSession == null);
         return result;
     }
 

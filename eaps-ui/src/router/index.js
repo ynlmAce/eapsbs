@@ -137,6 +137,24 @@ const routes = [
     ]
   },
   {
+    path: '/forum',
+    name: 'ForumList',
+    component: () => import('../views/forum/ForumList.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/forum/new',
+    name: 'ForumNewPost',
+    component: () => import('../views/forum/NewPost.vue'),
+    meta: { requiresAuth: true, role: 'student' }
+  },
+  {
+    path: '/forum/:id',
+    name: 'ForumPostDetail',
+    component: () => import('../views/forum/PostDetail.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('../views/NotFound.vue')

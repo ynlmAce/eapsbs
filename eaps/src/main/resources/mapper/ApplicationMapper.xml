@@ -45,7 +45,8 @@
             sp.name AS studentName,
             sp.school,
             sp.major,
-            sp.grade
+            sp.grade,
+            sp.user_id AS studentUserId
         FROM 
             application a
         INNER JOIN 

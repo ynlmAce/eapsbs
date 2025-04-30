@@ -52,7 +52,7 @@
       <template v-if="currentSession">
         <div class="chat-header">
           <div class="header-title">
-            {{ currentSession.name }}
+            {{ currentSession.participantInfo?.name || currentSession.name }}
             <el-tag v-if="currentSession.relatedJobTitle" size="small">
               {{ currentSession.relatedJobTitle }}
             </el-tag>
@@ -90,6 +90,9 @@
                 ></el-avatar>
                 
                 <div class="message-content">
+                  <div class="message-sender" v-if="!msg.isSelf" style="font-size:12px;color:#888;margin-bottom:2px;">
+                    {{ msg.senderName }}
+                  </div>
                   <!-- 文本消息 -->
                   <div v-if="msg.type === 'text'" class="message-text">{{ msg.content }}</div>
                   
@@ -276,6 +279,31 @@ const wsUrl = computed(() => {
   base = base.replace(/:(5173|5174|5175)/, ':8080');
   return `${base}/ws/chat?token=${encodeURIComponent(token)}`;
 });
+
+let heartbeatTimer = null;
+let lastPongTime = Date.now();
+const HEARTBEAT_INTERVAL = 30000; // 30秒
+const HEARTBEAT_TIMEOUT = 35000; // 35秒
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ping' }));
+      // 检查pong超时
+      if (Date.now() - lastPongTime > HEARTBEAT_TIMEOUT) {
+        ws.close(); // 触发重连
+      }
+    }
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
 
 // 筛选后的会话列表
 const filteredSessions = computed(() => {
@@ -472,17 +500,16 @@ const loadSessionMessages = async (sessionId, isLoadMore = false) => {
     
     // 处理消息列表
     const newMessages = body.list.map(msg => {
-      // 判断发送者是公司还是学生
-      const isSelf = msg.senderType === 'COMPANY';
-      
-      // 获取发送者信息，注意处理边界条件
-      let senderName = isSelf ? userStore.userInfo.name || '企业' : (currentSession.value?.studentName || '学生');
+      // 判断是否自己发送
+      const isSelf = msg.senderId === userStore.userInfo.id;
+      let senderName = isSelf
+        ? (userStore.userInfo.name || '我')
+        : (currentSession.value?.participantInfo?.name || '对方');
       let avatar = isSelf ? userStore.userInfo.avatar || defaultAvatar : (currentSession.value?.avatar || defaultAvatar);
-      
       return {
         id: msg.id,
         content: msg.content,
-        type: msg.contentType?.toLowerCase() || 'text', // 默认为文本类型
+        type: msg.contentType?.toLowerCase() || 'text',
         senderName: senderName,
         isSelf: isSelf,
         avatar: avatar,
@@ -854,58 +881,77 @@ const previewImage = (imageUrl) => {
 
 // WebSocket 消息处理
 const handleWsMessage = (event) => {
-  console.log('收到WebSocket消息:', event.data);
   try {
-    const data = JSON.parse(event.data)
+    const data = JSON.parse(event.data);
+    if (data.type === 'pong') {
+      lastPongTime = Date.now();
+      return;
+    }
     if (data && data.type === 'chat_message' && data.sessionId && data.message) {
       if (
         currentSession.value &&
         data.sessionId === currentSession.value.id
       ) {
-        // 避免重复
-        if (!messages.value.some(msg => msg.messageId === data.message.messageId)) {
+        const msg = data.message;
+        const isSelf = msg.senderId === userStore.userInfo.id;
+        let senderName = isSelf
+          ? (userStore.userInfo.name || '我')
+          : (currentSession.value?.participantInfo?.name || '对方');
+        let avatar = isSelf ? userStore.userInfo.avatar || defaultAvatar : (currentSession.value?.avatar || defaultAvatar);
+        if (!messages.value.some(m => m.id === msg.messageId || m.id === msg.id)) {
           messages.value.push({
-            ...data.message,
-            type: (data.message.contentType || 'text').toLowerCase(),
-            senderType: data.message.senderId === userStore.userInfo.id ? "self" : "other",
-            status: "sent",
+            id: msg.messageId || msg.id,
+            content: msg.content,
+            type: (msg.contentType || 'text').toLowerCase(),
+            senderName,
+            isSelf,
+            avatar,
+            time: formatMessageTime(msg.sentAt || new Date()),
+            sentAt: msg.sentAt,
+            file: msg.contentType === 'FILE' ? {
+              name: msg.fileName || '文件',
+              path: msg.filePath || '',
+              size: msg.fileSize || 0
+            } : null
           });
           nextTick(scrollToBottom);
         }
       }
-      // 可选：更新会话列表最新消息
     }
   } catch (e) {
     console.error("WebSocket消息解析失败", e);
   }
-}
+};
 
 // 建立WebSocket连接
 const connectWebSocket = () => {
-  if (ws) return
+  if (ws) return;
   try {
-    ws = new window.WebSocket(wsUrl.value)
+    ws = new window.WebSocket(wsUrl.value);
     ws.onopen = () => {
-      wsConnected.value = true
-    }
-    ws.onmessage = handleWsMessage
-    console.log(event.data)
+      wsConnected.value = true;
+      lastPongTime = Date.now();
+      startHeartbeat();
+    };
+    ws.onmessage = handleWsMessage;
     ws.onclose = () => {
-      wsConnected.value = false
-      ws = null
-      // 可选：自动重连
-      setTimeout(connectWebSocket, 5000)
-    }
+      wsConnected.value = false;
+      ws = null;
+      stopHeartbeat();
+      setTimeout(connectWebSocket, 5000);
+    };
     ws.onerror = () => {
-      wsConnected.value = false
-      ws && ws.close()
-      ws = null
-    }
+      wsConnected.value = false;
+      ws && ws.close();
+      ws = null;
+      stopHeartbeat();
+    };
   } catch (e) {
-    wsConnected.value = false
-    ws = null
+    wsConnected.value = false;
+    ws = null;
+    stopHeartbeat();
   }
-}
+};
 
 // 断开WebSocket连接
 const disconnectWebSocket = () => {
@@ -929,6 +975,7 @@ onBeforeUnmount(() => {
     clearTimeout(autoRetryTimer)
     autoRetryTimer = null
   }
+  stopHeartbeat()
   disconnectWebSocket()
 })
 </script>

@@ -323,7 +323,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { getCompanyApplications, processApplication, toggleFavoriteStudent, toggleBlacklistStudent } from '@/api/company'
 import { batchDownloadResumes } from '@/api/job'
@@ -331,6 +331,7 @@ import { createChatSession } from '@/api/chat'
 import { callApi } from '@/utils/apiUtils'
 
 const route = useRoute()
+const router = useRouter()
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
 // 视图模式：按岗位查看或按学生查看
@@ -508,9 +509,14 @@ const loadJobApplications = async () => {
     const result = await callApi(getCompanyApplications({
       groupBy: 'job'
     }))
-    
-    jobs.value = result.jobs || []
-    
+    jobs.value = (result.jobs || []).map(job => ({
+      ...job,
+      applications: (job.applications || []).map(app => ({
+        ...app,
+        jobId: app.jobId || app.job_id || job.id,
+        studentUserId: app.studentUserId || app.user_id // 兼容不同字段名
+      }))
+    }))
     // 如果URL中有jobId参数，展开对应岗位
     if (route.query.jobId) {
       const jobId = parseInt(route.query.jobId, 10)
@@ -645,23 +651,24 @@ const contactStudent = async (application) => {
     text: '创建会话中...',
     background: 'rgba(255, 255, 255, 0.7)'
   })
-  
   try {
+    if (!application.jobId || !application.studentUserId) {
+      ElMessage.error('无法获取岗位ID或学生用户ID，无法创建会话');
+      loading.close();
+      return;
+    }
     const result = await callApi(createChatSession(
-      'SE', // 学生-企业会话
-      application.studentId,
+      'SE',
+      application.studentUserId, // 必须传user_id
       application.jobId,
       '您好，我们已收到您的简历，想与您进一步沟通。'
     ))
-    
-    // 跳转到聊天页
     if (result && result.sessionId) {
-      window.location.href = `/company/chat?sessionId=${result.sessionId}`
+      router.push({ name: 'CompanyChat', query: { sessionId: result.sessionId } })
     } else {
       ElMessage.error('创建会话失败，请重试')
     }
   } catch (error) {
-    // 错误已由callApi处理
     console.error('创建会话失败:', error)
   } finally {
     loading.close()

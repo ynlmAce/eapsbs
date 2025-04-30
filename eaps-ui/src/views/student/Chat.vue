@@ -123,17 +123,16 @@
             <div
               class="message"
               :class="{
-                'message-self': message.senderId === currentUserId,
-                'message-other': message.senderId !== currentUserId,
+                'message-self': message.isSelf,
+                'message-other': !message.isSelf,
               }"
             >
               <el-avatar
-                v-if="message.senderId !== currentUserId"
+                v-if="!message.isSelf"
                 :size="30"
-                :src="getMessageAvatar(message)"
+                :src="message.avatar || getMessageAvatar(message)"
                 class="message-avatar"
               ></el-avatar>
-
               <div class="message-content">
                 <template v-if="message.contentType === 'text'">
                   <div class="message-text">{{ message.content }}</div>
@@ -159,24 +158,15 @@
                   </div>
                 </template>
               </div>
-
               <el-avatar
-                v-if="message.senderId === currentUserId"
+                v-if="message.isSelf"
                 :size="30"
-                :src="currentUserAvatar"
+                :src="message.avatar || currentUserAvatar"
                 class="message-avatar"
               ></el-avatar>
             </div>
           </div>
 
-          <div class="loading-more" v-if="hasMoreMessages">
-            <el-button
-              type="text"
-              @click="loadMoreMessages"
-              :loading="loadingMore"
-              >加载更多消息</el-button
-            >
-          </div>
         </div>
 
         <div class="chat-input">
@@ -375,10 +365,12 @@ if (!window.__EMOJI_FIXED__) {
       return null;
     },
   };
-  window.__EMOJI_DATA__ = window.__EMOJI_DATA__ || {
-    exmid: "fixed-value",
-    initialized: true,
-  };
+  if (!window.__EMOJI_DATA__) {
+    window.__EMOJI_DATA__ = { initialized: true };
+  }
+  if (window.__EMOJI_DATA__ && typeof window.__EMOJI_DATA__ === 'object') {
+    window.__EMOJI_DATA__.exmid = "fixed-value";
+  }
   console.log("已安装全局表情组件替代品");
 }
 
@@ -445,8 +437,9 @@ const fixEmojiComponent = () => {
     // 尝试初始化表情包数据
     if (window.__EMOJI_DATA__ && !window.__EMOJI_DATA__.initialized) {
       window.__EMOJI_DATA__.initialized = true;
-      window.__EMOJI_DATA__.exmid = "emoji-fixed";
-
+      if (window.__EMOJI_DATA__) {
+        window.__EMOJI_DATA__.exmid = "emoji-fixed";
+      }
       // 防止错误传播 - 替换可能出错的函数
       if (window.EmojiPanel) {
         const origInit = window.EmojiPanel.init;
@@ -1323,28 +1316,37 @@ const connectWebSocket = () => {
     console.error("WebSocket错误", e);
   };
   ws.onmessage = (event) => {
-    console.log(event.data)
     try {
+      console.log('收到WebSocket消息', event.data);
       const data = JSON.parse(event.data);
-      // 只处理chat_message类型
       if (data && data.type === 'chat_message' && data.sessionId && data.message) {
-        // 只处理当前会话的消息
-        if (
-          currentSession.value &&
-          data.sessionId === currentSession.value.id
-        ) {
-          // 避免重复
-          if (!currentMessages.value.some(msg => msg.messageId === data.message.messageId)) {
+        // sessionId类型强制转为字符串对比，避免类型不一致
+        const curSessionId = String(currentSession.value && currentSession.value.id);
+        const msgSessionId = String(data.sessionId);
+        if (currentSession.value && curSessionId === msgSessionId) {
+          const msg = data.message;
+          const isSelf = msg.senderId === currentUserId.value;
+          let senderName = isSelf
+            ? (userStore.userName || '我')
+            : (currentSession.value?.name || '对方');
+          let avatar = isSelf ? currentUserAvatar.value : (currentSession.value?.avatar || '');
+          // 唯一性判断更健壮
+          const msgId = msg.messageId || msg.id;
+          if (!currentMessages.value.some(m => (m.messageId || m.id) === msgId)) {
+            console.log('准备push到currentMessages', msg);
             currentMessages.value.push({
-              ...data.message,
-              senderType: data.message.senderId === currentUserId.value ? "self" : "other",
-              status: "sent",
+              ...msg,
+              senderName,
+              isSelf,
+              avatar,
+              status: 'sent',
             });
+            console.log('currentMessages', currentMessages.value);
             nextTick(scrollToBottom);
           }
         }
         // 更新会话列表最新消息
-        const idx = sessions.value.findIndex((s) => s.id === data.sessionId);
+        const idx = sessions.value.findIndex((s) => String(s.id) === msgSessionId);
         if (idx !== -1) {
           sessions.value[idx].lastMessage = data.message.content;
           sessions.value[idx].lastMessageTime = data.message.sentAt || Date.now();
