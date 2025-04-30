@@ -153,7 +153,7 @@ public class JobServiceImpl implements JobService {
                     && Constants.CertificationStatus.CERTIFIED.equals(company.getCertificationStatus()));
 
             // 评分信息
-            // TODO: 获取企业评分
+            // TODO获取企业评分
             jobMap.put("averageRating", 0.0);
 
             return jobMap;

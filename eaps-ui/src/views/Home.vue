@@ -7,7 +7,7 @@
       </div>
       <div class="nav-links">
         <router-link to="/" class="nav-link active">首页</router-link>
-        <router-link to="/jobs" class="nav-link">招聘信息</router-link>
+        <a href="#" class="nav-link" @click.prevent="checkLoginAndGoStudentJobs()">招聘信息</a>
         <router-link to="/about" class="nav-link">关于平台</router-link>
       </div>
       <div class="auth-buttons">
@@ -69,7 +69,7 @@
     <section class="latest-jobs">
       <div class="section-title">
         <h2>最新岗位</h2>
-        <router-link to="/jobs" class="view-all">查看全部</router-link>
+        <a href="#" class="view-all" @click.prevent="checkLoginAndGoStudentJobs()">查看全部</a>
       </div>
       <div class="job-list">
         <div class="job-card" v-for="(job, index) in latestJobs" :key="index">
@@ -86,7 +86,7 @@
           </div>
           <div class="job-footer">
             <span class="post-date">{{ job.date }}</span>
-            <router-link :to="`/jobs/${job.id}`" class="btn btn-sm">查看详情</router-link>
+            <a href="#" class="btn btn-sm" @click.prevent="checkLoginAndGoStudentJobs(job.id)">查看详情</a>
           </div>
         </div>
       </div>
@@ -164,55 +164,57 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { getForumPosts } from '@/api/forum'
+import { getJobList } from '@/api/job'
 
-// 模拟最新岗位数据
-const latestJobs = ref([
-  {
-    id: 1,
-    title: '前端开发工程师',
-    salary: '15K-20K',
-    company: '科技有限公司',
-    location: '北京',
-    tags: ['本科', '经验1-3年', '互联网'],
-    date: '2025-04-22'
-  },
-  {
-    id: 2,
-    title: '市场营销专员',
-    salary: '10K-15K',
-    company: '营销传媒集团',
-    location: '上海',
-    tags: ['本科', '应届生', '市场营销'],
-    date: '2025-04-21'
-  },
-  {
-    id: 3,
-    title: '算法工程师',
-    salary: '25K-35K',
-    company: '人工智能科技',
-    location: '深圳',
-    tags: ['硕士', '经验3-5年', 'AI'],
-    date: '2025-04-20'
-  },
-  {
-    id: 4,
-    title: '人力资源助理',
-    salary: '8K-12K',
-    company: '人力资源公司',
-    location: '广州',
-    tags: ['本科', '应届生', 'HR'],
-    date: '2025-04-19'
+const router = useRouter()
+
+// 动态获取最新岗位数据
+const latestJobs = ref([])
+
+async function loadLatestJobs() {
+  try {
+    const res = await getJobList({ page: 1, pageSize: 4 })
+    // 兼容body.list或list
+    const jobs = res.list || res
+    latestJobs.value = (jobs || []).slice(0, 4).map(job => ({
+      id: job.id,
+      title: job.title,
+      salary: job.salaryRange || job.salary,
+      company: job.companyName,
+      location: job.location,
+      tags: job.jobTags || job.tags || [],
+      date: (job.publishTime || job.publishedAt || '').slice(0, 10)
+    }))
+  } catch (e) {
+    latestJobs.value = []
   }
-])
+}
 
 // 动态获取论坛帖子数据
 const forumPosts = ref([])
 
-onMounted(async () => {
+function checkLoginAndGoStudentJobs(jobId) {
+  const token = localStorage.getItem('token')
+  const userRole = localStorage.getItem('userRole')
+  if (!token || userRole !== 'student') {
+    ElMessage.warning('请先以学生身份登录后再浏览岗位信息')
+    router.push('/login')
+    return
+  }
+  if (jobId) {
+    router.push(`/student/jobs?jobId=${jobId}`)
+  } else {
+    router.push('/student/jobs')
+  }
+}
+
+onMounted(() => {
+  loadLatestJobs()
   // 获取最新4条论坛帖子
-  try {
-    const res = await getForumPosts({ page: 1, pageSize: 4 })
+  getForumPosts({ page: 1, pageSize: 4 }).then(res => {
     forumPosts.value = (res.body || []).map(post => ({
       id: post.id,
       title: post.title,
@@ -221,7 +223,7 @@ onMounted(async () => {
       summary: post.content ? post.content.slice(0, 60) + (post.content.length > 60 ? '...' : '') : '',
       comments: post.comment_count || post.commentCount || 0
     }))
-  } catch {}
+  })
 })
 </script>
 
