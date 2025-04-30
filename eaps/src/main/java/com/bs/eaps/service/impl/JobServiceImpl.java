@@ -156,6 +156,17 @@ public class JobServiceImpl implements JobService {
             // TODO获取企业评分
             jobMap.put("averageRating", 0.0);
 
+            // 获取岗位标签
+            try {
+                List<String> jobTags = jobTagRelationService.getTagNamesByJobId(job.getId());
+                jobMap.put("jobTags", jobTags);
+                jobMap.put("tags", jobTags); // 兼容前端展示
+            } catch (Exception e) {
+                log.error("获取岗位标签失败: {}", e.getMessage());
+                jobMap.put("jobTags", new ArrayList<>());
+                jobMap.put("tags", new ArrayList<>());
+            }
+
             return jobMap;
         }).collect(Collectors.toList());
 
@@ -738,5 +749,50 @@ public class JobServiceImpl implements JobService {
         }
 
         return jobPosting.getCompanyId();
+    }
+
+    @Override
+    @Transactional
+    public void updateJob(JobDTO jobDTO) {
+        if (jobDTO == null || jobDTO.getCompanyId() == null || jobDTO.getTitle() == null) {
+            throw new IllegalArgumentException("岗位信息不完整");
+        }
+        if (jobDTO.getCompanyId() == null) {
+            throw new IllegalArgumentException("公司ID不能为空");
+        }
+        // 岗位ID必须存在
+        if (jobDTO instanceof com.bs.eaps.dto.job.JobDTO && ((com.bs.eaps.dto.job.JobDTO) jobDTO).getId() == null) {
+            throw new IllegalArgumentException("岗位ID不能为空");
+        }
+        Long jobId = ((com.bs.eaps.dto.job.JobDTO) jobDTO).getId();
+        JobPosting job = jobPostingMapper.selectById(jobId);
+        if (job == null) {
+            throw new IllegalArgumentException("岗位不存在");
+        }
+        // 更新基本信息
+        job.setTitle(jobDTO.getTitle());
+        job.setDescription(jobDTO.getDescription());
+        job.setRequirement(jobDTO.getRequirement());
+        job.setLocation(jobDTO.getLocation());
+        job.setSalary(jobDTO.getSalary());
+        job.setEducation(jobDTO.getEducation());
+        job.setExperience(jobDTO.getExperience());
+        job.setJobType(jobDTO.getJobType());
+        job.setHeadcount(jobDTO.getHeadcount());
+        job.setWorkTime(jobDTO.getWorkTime());
+        job.setValidUntil(jobDTO.getValidUntil());
+        job.setContactPerson(jobDTO.getContactPerson());
+        job.setContactMethod(jobDTO.getContactMethod());
+        job.setShowContact(jobDTO.getShowContact());
+        job.setUpdatedAt(java.time.LocalDateTime.now());
+        jobPostingMapper.updateById(job);
+        // 更新岗位标签
+        if (jobDTO.getJobTags() != null) {
+            jobTagRelationService.saveJobTagRelations(jobId, jobDTO.getJobTags());
+        }
+        // 更新福利标签
+        if (jobDTO.getWelfareTags() != null) {
+            jobWelfareService.saveJobWelfareRelations(jobId, jobDTO.getWelfareTags());
+        }
     }
 }

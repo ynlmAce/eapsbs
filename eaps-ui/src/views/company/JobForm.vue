@@ -99,8 +99,14 @@
               :key="tag.id"
               :label="tag.name"
               :value="tag.id"
-            />
+              :style="tag.name === '急招' ? 'background:#ff5252;color:#fff;font-weight:bold;' : ''"
+            >
+              <span :style="tag.name === '急招' ? 'color:#ff5252;font-weight:bold;' : ''">{{ tag.name }}</span>
+            </el-option>
           </el-select>
+          <div style="margin-top:6px;color:#ff5252;font-size:13px;">
+            如岗位急需招聘，请务必勾选"急招"标签，平台将优先推荐！
+          </div>
         </el-form-item>
         
         <el-form-item label="福利标签" prop="welfareTags">
@@ -278,19 +284,37 @@ const fetchTagData = async () => {
 const fetchJobDetail = async (jobId) => {
   try {
     const jobDetail = await callApi(getJobDetail(jobId))
-    
     if (jobDetail) {
       // 将日期字符串转换为Date对象
       if (jobDetail.validUntil) {
         jobDetail.validUntil = new Date(jobDetail.validUntil)
       }
-      
-      // 填充表单数据
+      // 修正：确保标签为ID数组（兼容后端返回字符串、对象、ID）
+      if (Array.isArray(jobDetail.jobTags)) {
+        jobForm.jobTags = jobDetail.jobTags.map(tag =>
+          typeof tag === 'object'
+            ? tag.id
+            : ((jobTagOptions.value.find(opt => opt.name === tag) || {}).id || tag)
+        )
+      }
+      if (Array.isArray(jobDetail.welfareTags)) {
+        const allWelfareTags = welfareTagGroups.value.flatMap(group => group.tags)
+        jobForm.welfareTags = jobDetail.welfareTags.map(tag =>
+          typeof tag === 'object'
+            ? tag.id
+            : ((allWelfareTags.find(opt => opt.name === tag) || {}).id || tag)
+        )
+      }
+      // 填充其它表单数据
       Object.keys(jobForm).forEach(key => {
-        if (jobDetail[key] !== undefined) {
+        if (jobDetail[key] !== undefined && key !== 'jobTags' && key !== 'welfareTags') {
           jobForm[key] = jobDetail[key]
         }
       })
+      // 强制补全companyId
+      if (jobDetail.companyId) {
+        jobForm.companyId = jobDetail.companyId
+      }
     }
   } catch (error) {
     console.error('获取岗位详情失败:', error)
@@ -308,6 +332,14 @@ const submitForm = async () => {
       return
     }
     
+    // 提交前处理标签为ID数组
+    if (Array.isArray(jobForm.jobTags)) {
+      jobForm.jobTags = jobForm.jobTags.map(tag => typeof tag === 'object' ? tag.id : tag);
+    }
+    if (Array.isArray(jobForm.welfareTags)) {
+      jobForm.welfareTags = jobForm.welfareTags.map(tag => typeof tag === 'object' ? tag.id : tag);
+    }
+    
     // 格式化日期为字符串
     const formData = { ...jobForm }
     if (formData.validUntil instanceof Date) {
@@ -317,8 +349,13 @@ const submitForm = async () => {
     submitting.value = true
     try {
       if (isEdit.value) {
-        // 编辑岗位
         formData.id = parseInt(route.params.id)
+        // 打印调试
+        console.log('提交岗位更新数据:', formData)
+        // 自动补全companyId（如后端需要）
+        if (!formData.companyId && jobForm.companyId) {
+          formData.companyId = jobForm.companyId
+        }
         await callApi(updateJob(formData), {
           showSuccess: true,
           successMsg: '岗位更新成功'

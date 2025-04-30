@@ -84,4 +84,11 @@ public interface JobService {
      * @return 企业ID
      */
     Long getCompanyIdByJobId(Long jobId);
+
+    /**
+     * 更新岗位信息
+     * 
+     * @param jobDTO 岗位信息
+     */
+    void updateJob(JobDTO jobDTO);
 }

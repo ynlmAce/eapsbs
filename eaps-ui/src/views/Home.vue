@@ -68,7 +68,7 @@
     <!-- 最新岗位 -->
     <section class="latest-jobs">
       <div class="section-title">
-        <h2>最新岗位</h2>
+        <h2>岗位推荐</h2>
         <a href="#" class="view-all" @click.prevent="checkLoginAndGoStudentJobs()">查看全部</a>
       </div>
       <div class="job-list">
@@ -82,7 +82,7 @@
             <span class="job-location"><i class="fas fa-map-marker-alt"></i> {{ job.location }}</span>
           </div>
           <div class="job-tags">
-            <span class="tag" v-for="(tag, idx) in job.tags" :key="idx">{{ tag }}</span>
+            <span class="tag" v-for="(tag, idx) in job.tags" :key="idx" :style="tag === '急招' ? 'background:#ff5252;color:#fff;font-weight:bold;' : ''">{{ tag }}</span>
           </div>
           <div class="job-footer">
             <span class="post-date">{{ job.date }}</span>
@@ -176,10 +176,14 @@ const latestJobs = ref([])
 
 async function loadLatestJobs() {
   try {
-    const res = await getJobList({ page: 1, pageSize: 4 })
-    // 兼容body.list或list
+    const res = await getJobList({ page: 1, pageSize: 20 }) // 拉多一点，便于筛选
     const jobs = res.list || res
-    latestJobs.value = (jobs || []).slice(0, 4).map(job => ({
+    // 先筛选带"急招"标签的岗位
+    const urgent = (jobs || []).filter(job => (job.jobTags || job.tags || []).includes('急招'))
+    const normal = (jobs || []).filter(job => !(job.jobTags || job.tags || []).includes('急招'))
+    // 急招优先，最多4条
+    const sorted = urgent.concat(normal).slice(0, 4)
+    latestJobs.value = sorted.map(job => ({
       id: job.id,
       title: job.title,
       salary: job.salaryRange || job.salary,

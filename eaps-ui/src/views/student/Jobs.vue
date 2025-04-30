@@ -91,7 +91,8 @@
             v-for="(tag, index) in (job.jobTags || job.tags)" 
             :key="index" 
             size="small" 
-            type="success"
+            :type="(typeof tag === 'string' ? tag : tag.name) === '急招' ? '' : 'success'"
+            :style="(typeof tag === 'string' ? tag : tag.name) === '急招' ? 'background:#ff5252;color:#fff;font-weight:bold;border:none;' : ''"
           >
             {{ typeof tag === 'string' ? tag : tag.name }}
           </el-tag>
@@ -173,10 +174,11 @@
             <el-tag 
               v-for="(tag, index) in selectedJob.jobTags" 
               :key="index"
-              class="welfare-tag" 
-              type="success"
+              class="welfare-tag"
+              :type="(typeof tag === 'string' ? tag : tag.name) === '急招' ? '' : 'success'"
+              :style="(typeof tag === 'string' ? tag : tag.name) === '急招' ? 'background:#ff5252;color:#fff;font-weight:bold;border:none;' : ''"
             >
-              {{ tag }}
+              {{ typeof tag === 'string' ? tag : tag.name }}
             </el-tag>
           </div>
         </div>
@@ -250,6 +252,12 @@ const locationOptions = ref([
   { label: '重庆', value: '重庆' }
 ])
 
+const processJobList = (jobs) => {
+  const urgent = (jobs || []).filter(job => (job.jobTags || job.tags || []).some(tag => (typeof tag === 'string' ? tag : tag.name) === '急招'))
+  const normal = (jobs || []).filter(job => !(job.jobTags || job.tags || []).some(tag => (typeof tag === 'string' ? tag : tag.name) === '急招'))
+  return urgent.concat(normal)
+}
+
 const loadJobList = async (isRetry = false) => {
   if (requestTimer) {
     clearTimeout(requestTimer)
@@ -292,7 +300,7 @@ const loadJobList = async (isRetry = false) => {
 
       if (res && typeof res === 'object') {
         if (res.list && Array.isArray(res.list)) {
-          jobList.value = res.list
+          jobList.value = processJobList(res.list)
           total.value = res.total || 0
           isInitialized.value = true
           loadRetries.value = 0

@@ -38,6 +38,22 @@
             </div>
           </div>
 
+          <!-- 岗位标签区：高亮急招 -->
+          <div v-if="(jobData.jobTags && jobData.jobTags.length) || (jobData.tags && jobData.tags.length)" class="job-tags">
+            <h3 style="font-size:15px;margin-bottom:8px;">岗位标签</h3>
+            <div>
+              <el-tag 
+                v-for="(tag, idx) in jobData.jobTags || jobData.tags" 
+                :key="idx"
+                :type="(typeof tag === 'string' ? tag : tag.name) === '急招' ? '' : 'success'"
+                :style="(typeof tag === 'string' ? tag : tag.name) === '急招' ? 'background:#ff5252;color:#fff;font-weight:bold;border:none;' : ''"
+                class="welfare-tag"
+              >
+                {{ typeof tag === 'string' ? tag : tag.name }}
+              </el-tag>
+            </div>
+          </div>
+
           <!-- 岗位基本信息标签 -->
           <div class="job-tags">
             <el-tag v-if="jobData.location" type="info">{{ jobData.location }}</el-tag>

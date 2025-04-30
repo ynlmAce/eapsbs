@@ -95,4 +95,9 @@ public class JobDTO {
      * 是否显示联系方式
      */
     private Boolean showContact;
+
+    /**
+     * 岗位ID（用于更新）
+     */
+    private Long id;
 }

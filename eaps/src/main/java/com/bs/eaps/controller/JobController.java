@@ -369,4 +369,18 @@ public class JobController {
             return ApiResponse.systemError("系统异常: " + e.getMessage());
         }
     }
+
+    /**
+     * 更新岗位信息
+     */
+    @PostMapping("/update")
+    public ApiResponse updateJob(@RequestBody JobDTO jobDTO) {
+        try {
+            jobService.updateJob(jobDTO);
+            return ApiResponse.success("岗位信息更新成功");
+        } catch (Exception e) {
+            log.error("岗位信息更新失败", e);
+            return ApiResponse.error(500, "岗位信息更新失败: " + e.getMessage());
+        }
+    }
 }
